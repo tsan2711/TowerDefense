@@ -282,6 +282,7 @@ namespace Services.Firestore
                     type = (int)libraryType,
                     levelId = GetLevelIdForLibraryType(libraryType),
                     towerLibraryPrefabName = GetTowerLibraryPrefabName(libraryType),
+                    towerPrefabTypes = GetDefaultTowerPrefabTypesForLibrary(libraryType),
                     description = GetLevelLibraryDescription(libraryType)
                 };
                 configs.Add(config);
@@ -356,12 +357,90 @@ namespace Services.Firestore
         }
 
         /// <summary>
+        /// Get default tower prefab types list for a specific level library
+        /// Returns list of TowerPrefabType enum values as integers (MainTower)
+        /// </summary>
+        private static List<int> GetDefaultTowerPrefabTypesForLibrary(LevelLibraryType libraryType)
+        {
+            var towerTypes = new List<int>();
+            
+            switch (libraryType)
+            {
+                case LevelLibraryType.Tutorial:
+                    // Tutorial: Basic towers only
+                    towerTypes.Add((int)TowerPrefabType.Emp);
+                    towerTypes.Add((int)TowerPrefabType.MachineGun);
+                    break;
+                    
+                case LevelLibraryType.Level_1:
+                    // Level 1: Basic towers
+                    towerTypes.Add((int)TowerPrefabType.Emp);
+                    towerTypes.Add((int)TowerPrefabType.Laser);
+                    towerTypes.Add((int)TowerPrefabType.MachineGun);
+                    break;
+                    
+                case LevelLibraryType.Level_2:
+                    // Level 2: More towers
+                    towerTypes.Add((int)TowerPrefabType.Emp);
+                    towerTypes.Add((int)TowerPrefabType.Laser);
+                    towerTypes.Add((int)TowerPrefabType.MachineGun);
+                    towerTypes.Add((int)TowerPrefabType.Pylon);
+                    break;
+                    
+                case LevelLibraryType.Level_3:
+                    // Level 3: Most towers
+                    towerTypes.Add((int)TowerPrefabType.Emp);
+                    towerTypes.Add((int)TowerPrefabType.Laser);
+                    towerTypes.Add((int)TowerPrefabType.MachineGun);
+                    towerTypes.Add((int)TowerPrefabType.Pylon);
+                    towerTypes.Add((int)TowerPrefabType.Rocket);
+                    break;
+                    
+                case LevelLibraryType.Level_4:
+                    // Level 4: Almost all towers
+                    towerTypes.Add((int)TowerPrefabType.Emp);
+                    towerTypes.Add((int)TowerPrefabType.Laser);
+                    towerTypes.Add((int)TowerPrefabType.MachineGun);
+                    towerTypes.Add((int)TowerPrefabType.Pylon);
+                    towerTypes.Add((int)TowerPrefabType.Rocket);
+                    break;
+                    
+                case LevelLibraryType.Level_5:
+                    // Level 5: All towers available
+                    towerTypes.Add((int)TowerPrefabType.Emp);
+                    towerTypes.Add((int)TowerPrefabType.Laser);
+                    towerTypes.Add((int)TowerPrefabType.MachineGun);
+                    towerTypes.Add((int)TowerPrefabType.Pylon);
+                    towerTypes.Add((int)TowerPrefabType.Rocket);
+                    towerTypes.Add((int)TowerPrefabType.SuperTower);
+                    break;
+                    
+                default:
+                    // Default: Basic towers
+                    towerTypes.Add((int)TowerPrefabType.Emp);
+                    towerTypes.Add((int)TowerPrefabType.MachineGun);
+                    break;
+            }
+            
+            return towerTypes;
+        }
+
+        /// <summary>
         /// Check if an enum value exists in the enum type
         /// Used to validate data from backend
         /// </summary>
         public static bool IsValidLevelLibraryType(int typeValue)
         {
             return Enum.IsDefined(typeof(LevelLibraryType), typeValue);
+        }
+
+        /// <summary>
+        /// Check if an enum value exists in TowerPrefabType enum
+        /// Used to validate data from backend
+        /// </summary>
+        public static bool IsValidTowerPrefabType(int typeValue)
+        {
+            return Enum.IsDefined(typeof(TowerPrefabType), typeValue);
         }
     }
 }

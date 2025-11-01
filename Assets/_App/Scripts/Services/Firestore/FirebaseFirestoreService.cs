@@ -561,6 +561,11 @@ namespace Services.Firestore
             {
                 Debug.Log("[FirebaseFirestoreService] Starting to load all config data...");
                 
+                // ✅ Đảm bảo LevelLibraryConfig collection tồn tại trước khi load
+                // Initialize LevelLibraryConfig nếu chưa có (không phụ thuộc vào các collection khác)
+                Debug.Log("[FirebaseFirestoreService] Ensuring LevelLibraryConfig collection exists...");
+                await InitializeLevelLibraryConfigCollectionIfNeededAsync();
+                
                 // Load all data in parallel
                 Task<List<AgentConfigurationData>> agentTask = LoadAgentConfigurationsAsync();
                 Task<List<TowerLevelDataData>> towerTask = LoadTowerLevelDataAsync();
@@ -574,6 +579,7 @@ namespace Services.Firestore
                 GameDataSyncService.SyncTowerLevelDataToScriptableObjects(cachedTowerLevelData);
                 GameDataSyncService.SyncAgentConfigurationsToScriptableObjects(cachedAgentConfigurations);
                 GameDataSyncService.SyncLevelListToScriptableObject(cachedLevelList);
+                GameDataSyncService.SyncLevelLibraryConfigsToContainer(cachedLevelLibraryConfigs);
                 Debug.Log("[FirebaseFirestoreService] ScriptableObject sync completed");
 
                 isConfigDataLoaded = true;
@@ -908,6 +914,35 @@ namespace Services.Firestore
                     config.towerLibraryPrefabName = data["towerLibraryPrefabName"].ToString();
                 }
                 
+                // Parse towerPrefabTypes list from Firestore
+                if (data.ContainsKey("towerPrefabTypes") && data["towerPrefabTypes"] != null)
+                {
+                    config.towerPrefabTypes = new List<int>();
+                    if (data["towerPrefabTypes"] is List<object> towerTypesList)
+                    {
+                        foreach (object towerTypeObj in towerTypesList)
+                        {
+                            try
+                            {
+                                int towerType = Convert.ToInt32(towerTypeObj);
+                                // Validate tower prefab type
+                                if (DefaultGameData.IsValidTowerPrefabType(towerType))
+                                {
+                                    config.towerPrefabTypes.Add(towerType);
+                                }
+                                else
+                                {
+                                    Debug.LogWarning($"[FirebaseFirestoreService] Invalid TowerPrefabType: {towerType}, skipping...");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Debug.LogWarning($"[FirebaseFirestoreService] Error parsing tower prefab type: {ex.Message}");
+                            }
+                        }
+                    }
+                }
+                
                 if (data.ContainsKey("description") && data["description"] != null)
                 {
                     config.description = data["description"].ToString();
@@ -1114,6 +1149,7 @@ namespace Services.Firestore
                 }
 
                 // Initialize LevelLibraryConfig collection (chỉ tạo, không update)
+                // ✅ LevelLibraryConfig được initialize riêng, không phụ thuộc vào các collection khác
                 bool levelLibraryConfigSuccess = await InitializeLevelLibraryConfigCollectionAsync();
                 if (!levelLibraryConfigSuccess)
                 {
@@ -1525,6 +1561,38 @@ namespace Services.Firestore
         }
 
         /// <summary>
+        /// Initialize LevelLibraryConfig collection if needed (check and update missing fields)
+        /// Called separately from other collections to ensure it's always initialized and up-to-date
+        /// Will update existing documents if they're missing the towerPrefabTypes field
+        /// </summary>
+        private async Task<bool> InitializeLevelLibraryConfigCollectionIfNeededAsync()
+        {
+#if !FIREBASE_FIRESTORE_AVAILABLE
+            return false;
+#else
+            if (!isInitialized || firestore == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                // Always call InitializeLevelLibraryConfigCollectionAsync() to:
+                // 1. Create new documents if collection is empty
+                // 2. Update existing documents if they're missing towerPrefabTypes field
+                // 3. Preserve existing data for documents that already have all fields
+                Debug.Log("[FirebaseFirestoreService] Checking and updating LevelLibraryConfig collection...");
+                return await InitializeLevelLibraryConfigCollectionAsync();
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[FirebaseFirestoreService] Error checking/updating LevelLibraryConfig collection: {e.Message}");
+                return false;
+            }
+#endif
+        }
+
+        /// <summary>
         /// Initialize LevelLibraryConfig collection with default data for all enum values
         /// Creates documents for all LevelLibraryType enum values mapping level IDs to prefab names
         /// </summary>
@@ -1564,6 +1632,7 @@ namespace Services.Firestore
                 Debug.Log($"[FirebaseFirestoreService] Found {existingTypes.Count} existing level library config documents in Firestore");
                 
                 int createdCount = 0;
+                int updatedCount = 0;
                 int skippedCount = 0;
                 
                 // Create documents for all enum values (skip if already exist to preserve existing data)
@@ -1586,6 +1655,7 @@ namespace Services.Firestore
                         { "type", config.type },
                         { "levelId", config.levelId ?? "" },
                         { "towerLibraryPrefabName", config.towerLibraryPrefabName ?? "" },
+                        { "towerPrefabTypes", config.towerPrefabTypes ?? new List<int>() },
                         { "description", config.description ?? "" },
                         { "updatedAt", Timestamp.GetCurrentTimestamp() }
                     };
@@ -1596,18 +1666,47 @@ namespace Services.Firestore
                         data["createdAt"] = Timestamp.GetCurrentTimestamp();
                         await docRef.SetAsync(data);
                         createdCount++;
-                        Debug.Log($"[FirebaseFirestoreService] Created level library config type {config.type} ({docId}) - levelId: {config.levelId}, prefab: {config.towerLibraryPrefabName}");
+                        int towerCount = config.towerPrefabTypes != null ? config.towerPrefabTypes.Count : 0;
+                        Debug.Log($"[FirebaseFirestoreService] Created level library config type {config.type} ({docId}) - levelId: {config.levelId}, prefab: {config.towerLibraryPrefabName}, towers: {towerCount}");
                     }
                     else
                     {
-                        // ✅ QUAN TRỌNG: Không update document đã tồn tại để preserve data từ backend
-                        // Chỉ log để debug
-                        skippedCount++;
-                        Debug.Log($"[FirebaseFirestoreService] Level library config type {config.type} ({docId}) already exists, skipping to preserve existing data");
+                        // Check if document exists but missing towerPrefabTypes field
+                        DocumentSnapshot existingDoc = await docRef.GetSnapshotAsync();
+                        if (existingDoc.Exists)
+                        {
+                            Dictionary<string, object> existingData = existingDoc.ToDictionary();
+                            
+                            // Update document if missing towerPrefabTypes field
+                            if (!existingData.ContainsKey("towerPrefabTypes"))
+                            {
+                                Dictionary<string, object> updateData = new Dictionary<string, object>
+                                {
+                                    { "towerPrefabTypes", config.towerPrefabTypes ?? new List<int>() },
+                                    { "updatedAt", Timestamp.GetCurrentTimestamp() }
+                                };
+                                
+                                await docRef.UpdateAsync(updateData);
+                                int towerCount = config.towerPrefabTypes != null ? config.towerPrefabTypes.Count : 0;
+                                Debug.Log($"[FirebaseFirestoreService] ✅ Updated level library config type {config.type} ({docId}) - added towerPrefabTypes field with {towerCount} towers");
+                                updatedCount++;
+                            }
+                            else
+                            {
+                                // ✅ QUAN TRỌNG: Document đã có đầy đủ fields, không update để preserve data từ backend
+                                skippedCount++;
+                                Debug.Log($"[FirebaseFirestoreService] Level library config type {config.type} ({docId}) already exists with towerPrefabTypes, skipping to preserve existing data");
+                            }
+                        }
+                        else
+                        {
+                            skippedCount++;
+                            Debug.Log($"[FirebaseFirestoreService] Level library config type {config.type} ({docId}) already exists, skipping to preserve existing data");
+                        }
                     }
                 }
                 
-                Debug.Log($"[FirebaseFirestoreService] ✅ Initialized {COLLECTION_LEVEL_LIBRARY_CONFIG}: {createdCount} created, {skippedCount} skipped (total: {defaultConfigs.Count})");
+                Debug.Log($"[FirebaseFirestoreService] ✅ Initialized {COLLECTION_LEVEL_LIBRARY_CONFIG}: {createdCount} created, {updatedCount} updated, {skippedCount} skipped (total: {defaultConfigs.Count})");
                 return true;
             }
             catch (Exception e)

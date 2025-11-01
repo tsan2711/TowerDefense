@@ -221,6 +221,76 @@ namespace Services.Firestore
             Debug.LogWarning("[GameDataSyncService] ScriptableObject sync chỉ hoạt động trong Editor mode.");
 #endif
         }
+
+        /// <summary>
+        /// Sync LevelLibraryConfig vào TowerLibraryContainer
+        /// Load Tower prefabs từ Resources/Tower và populate vào các TowerLibrary
+        /// </summary>
+        public static void SyncLevelLibraryConfigsToContainer(List<LevelLibraryConfigData> configs)
+        {
+            if (configs == null || configs.Count == 0)
+            {
+                Debug.LogWarning("[GameDataSyncService] No LevelLibraryConfig data to sync");
+                return;
+            }
+
+            // Load hoặc tạo TowerLibraryContainer
+            TowerLibraryContainer container = null;
+            
+#if UNITY_EDITOR
+            // Trong Editor: Load từ AssetDatabase để có reference chính xác
+            string containerAssetPath = "Assets/Resources/TowerLibraryContainer.asset";
+            container = AssetDatabase.LoadAssetAtPath<TowerLibraryContainer>(containerAssetPath);
+            
+            if (container == null)
+            {
+                Debug.LogWarning("[GameDataSyncService] TowerLibraryContainer not found, creating new one...");
+                
+                // Tạo folder nếu chưa có
+                string folderPath = "Assets/Resources";
+                if (!AssetDatabase.IsValidFolder(folderPath))
+                {
+                    AssetDatabase.CreateFolder("Assets", "Resources");
+                }
+
+                container = ScriptableObject.CreateInstance<TowerLibraryContainer>();
+                AssetDatabase.CreateAsset(container, containerAssetPath);
+                AssetDatabase.SaveAssets();
+                AssetDatabase.Refresh();
+                Debug.Log($"[GameDataSyncService] Created TowerLibraryContainer: {containerAssetPath}");
+            }
+            else
+            {
+                Debug.Log($"[GameDataSyncService] Loaded existing TowerLibraryContainer from: {containerAssetPath}");
+            }
+#else
+            // Runtime: Load từ Resources
+            container = Resources.Load<TowerLibraryContainer>("TowerLibraryContainer");
+            
+            if (container == null)
+            {
+                Debug.LogWarning("[GameDataSyncService] TowerLibraryContainer not found in Resources, creating temporary instance in memory");
+                container = ScriptableObject.CreateInstance<TowerLibraryContainer>();
+            }
+#endif
+
+            // Populate container với TowerLibraries
+            TowerLibraryLoader.PopulateTowerLibraryContainer(configs, container);
+
+#if UNITY_EDITOR
+            if (container != null)
+            {
+                EditorUtility.SetDirty(container);
+                AssetDatabase.SaveAssets();
+                AssetDatabase.Refresh();
+            }
+#endif
+
+            // Store container reference for runtime access
+            TowerLibraryLoader.SetContainerInstance(container);
+
+            Debug.Log($"[GameDataSyncService] ✅ Synced TowerLibraryContainer with {configs.Count} level library configs");
+        }
     }
 }
 

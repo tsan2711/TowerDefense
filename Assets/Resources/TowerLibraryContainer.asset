@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 42b835bcc8a3848b0bab40ae87630561, type: 3}
+  m_Name: TowerLibraryContainer
+  m_EditorClassIdentifier: Assembly-CSharp::TowerDefense.Towers.Data.TowerLibraryContainer
+  libraries:
+  - levelId: level_1
+    towerLibrary: {fileID: 11400000, guid: ed098d306f7d84b1588b9a6dc61f1d87, type: 2}
+  - levelId: level_2
+    towerLibrary: {fileID: 11400000, guid: d4e37a45f55a04e3f853986800d7f8b7, type: 2}
+  - levelId: level_3
+    towerLibrary: {fileID: 11400000, guid: 42485df1a97a144ee9c6faa76feaeb60, type: 2}
+  - levelId: level_4
+    towerLibrary: {fileID: 11400000, guid: 14372d1c11a1b4b9194f180353d28051, type: 2}
+  - levelId: level_5
+    towerLibrary: {fileID: 11400000, guid: 5e415f772a57f4afda6912e5a11b2df0, type: 2}
+  - levelId: tutorial
+    towerLibrary: {fileID: 11400000, guid: 914b61bd63a0b451e97e50bb7927ef95, type: 2}

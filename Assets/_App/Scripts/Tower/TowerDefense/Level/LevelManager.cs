@@ -4,7 +4,10 @@ using Core.Health;
 using Core.Utilities;
 using TowerDefense.Economy;
 using TowerDefense.Towers.Data;
+using TowerDefense.Game;
 using UnityEngine;
+using Services.Core;
+using Services.Managers;
 
 namespace TowerDefense.Level
 {
@@ -185,6 +188,9 @@ namespace TowerDefense.Level
 			currency = new Currency(startingCurrency);
 			currencyGainer.Initialize(currency);
 
+			// Load TowerLibrary từ container nếu chưa được assign
+			LoadTowerLibraryFromContainer();
+
 			// If there's an intro use it, otherwise fall through to gameplay
 			if (intro != null)
 			{
@@ -202,6 +208,83 @@ namespace TowerDefense.Level
 			{
 				homeBases[i].died += OnHomeBaseDestroyed;
 			}
+		}
+
+		/// <summary>
+		/// Load TowerLibrary từ TowerLibraryContainer dựa trên levelId của scene hiện tại
+		/// </summary>
+		protected void LoadTowerLibraryFromContainer()
+		{
+			// Nếu đã có towerLibrary được assign trong Inspector, không override
+			if (towerLibrary != null)
+			{
+				Debug.Log("[LevelManager] TowerLibrary already assigned in Inspector, skipping load from container");
+				return;
+			}
+
+			// Lấy levelId từ scene hiện tại
+			string levelId = GetCurrentLevelId();
+			if (string.IsNullOrEmpty(levelId))
+			{
+				Debug.LogWarning("[LevelManager] Cannot determine levelId for current scene, TowerLibrary will not be loaded from container");
+				return;
+			}
+
+			// Load TowerLibraryContainer từ Resources hoặc cached instance
+			TowerLibraryContainer container = Services.Firestore.TowerLibraryLoader.GetContainerInstance();
+			if (container == null)
+			{
+				Debug.LogWarning("[LevelManager] TowerLibraryContainer not found, TowerLibrary will not be loaded");
+				return;
+			}
+
+			// Get TowerLibrary từ container
+			TowerLibrary library = container.GetLibrary(levelId);
+			if (library != null)
+			{
+				towerLibrary = library;
+				Debug.Log($"[LevelManager] Loaded TowerLibrary for level {levelId} from container with {library.configurations.Count} towers");
+			}
+			else
+			{
+				Debug.LogWarning($"[LevelManager] TowerLibrary not found in container for level {levelId}");
+			}
+		}
+
+		/// <summary>
+		/// Get current level ID từ scene name hoặc GameManager
+		/// </summary>
+		protected string GetCurrentLevelId()
+		{
+			// Try to get from GameManager
+			if (TowerDefense.Game.GameManager.instanceExists)
+			{
+				var levelItem = TowerDefense.Game.GameManager.instance.GetLevelForCurrentScene();
+				if (levelItem != null && !string.IsNullOrEmpty(levelItem.id))
+				{
+					return levelItem.id;
+				}
+			}
+
+			// Fallback: Try to infer from scene name
+			string sceneName = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+			if (sceneName == "Tutorial")
+			{
+				return "level_1"; // Tutorial maps to level_1
+			}
+
+			// Try to match scene name to level pattern
+			if (sceneName.StartsWith("Level"))
+			{
+				// Extract number from scene name (e.g., "Level1" -> "level_1", "Level2" -> "level_2")
+				string numberStr = sceneName.Replace("Level", "");
+				if (int.TryParse(numberStr, out int levelNumber))
+				{
+					return $"level_{levelNumber}";
+				}
+			}
+
+			return null;
 		}
 
 		/// <summary>

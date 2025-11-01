@@ -38,7 +38,6 @@ namespace Services.UI
         [SerializeField] private TMP_InputField signUpConfirmPasswordInputField;
 
         [Header("UI Display")]
-        [SerializeField] private TextMeshProUGUI statusText;
         [SerializeField] private TextMeshProUGUI userInfoText;
         [SerializeField] private GameObject loginPanel;
         [SerializeField] private GameObject signUpPanel;
@@ -46,7 +45,6 @@ namespace Services.UI
 
         [Header("Settings")]
         [SerializeField] private bool autoUpdateUI = true;
-        [SerializeField] private float statusMessageDuration = 3f;
         [Tooltip("Nếu true, sẽ tự động đăng xuất session cũ khi khởi động để cho phép đăng nhập lại")]
         [SerializeField] private bool autoSignOutOnStart = false;
         
@@ -57,8 +55,6 @@ namespace Services.UI
         [SerializeField] private float sceneTransitionDelay = 1f;
 
         private IAuthService authService;
-        private float statusMessageTimer = 0f;
-        private string defaultStatusMessage = "";
         private bool isServiceReady = false;
         private bool hasCheckedButtonsAfterInit = false; // Flag để chỉ check buttons một lần sau khi init
 
@@ -336,16 +332,6 @@ namespace Services.UI
 
         private void Update()
         {
-            // Auto-clear status message after duration
-            if (statusMessageTimer > 0f)
-            {
-                statusMessageTimer -= Time.deltaTime;
-                if (statusMessageTimer <= 0f && statusText != null)
-                {
-                    statusText.text = defaultStatusMessage;
-                }
-            }
-            
             // Check if service is ready and update UI if needed
             if (isServiceReady && authService != null && authService.IsInitialized)
             {
@@ -633,22 +619,19 @@ namespace Services.UI
                 }
             }
             
-            // Nếu service vừa mới initialized, clear status message và thông báo ready
+            // Nếu service vừa mới initialized, thông báo ready
             if (serviceInitialized)
             {
-                if (statusText != null && (statusText.text.Contains("khởi tạo") || statusText.text.Contains("Đang")))
+                if (isAuthenticated)
                 {
-                    if (isAuthenticated)
-                    {
-                        // User đã authenticated từ session trước
-                        SetStatus("Đã đăng nhập từ session trước. Nhấn 'Đăng xuất' để đăng nhập lại.", false);
-                        Debug.Log("[UILoginManager] ✅ Service đã initialized nhưng user đã authenticated. Buttons login/signup bị disable. User có thể đăng xuất để đăng nhập lại.");
-                    }
-                    else
-                    {
-                        SetStatus("Sẵn sàng đăng nhập", false);
-                        Debug.Log("[UILoginManager] ✅ Service đã initialized, buttons đã được enable!");
-                    }
+                    // User đã authenticated từ session trước
+                    SetStatus("Đã đăng nhập từ session trước. Nhấn 'Đăng xuất' để đăng nhập lại.", false);
+                    Debug.Log("[UILoginManager] ✅ Service đã initialized nhưng user đã authenticated. Buttons login/signup bị disable. User có thể đăng xuất để đăng nhập lại.");
+                }
+                else
+                {
+                    SetStatus("Sẵn sàng đăng nhập", false);
+                    Debug.Log("[UILoginManager] ✅ Service đã initialized, buttons đã được enable!");
                 }
             }
         }
@@ -783,11 +766,9 @@ namespace Services.UI
 
         private void SetStatus(string message, bool isError = false)
         {
-            if (statusText != null)
+            if (MessagePanel.IsReady())
             {
-                statusText.text = message;
-                statusText.color = isError ? Color.red : Color.white;
-                statusMessageTimer = statusMessageDuration;
+                MessagePanel.instance.ShowMessage(message, isError);
             }
             Debug.Log($"[UILoginManager] {message}");
         }
@@ -1180,10 +1161,9 @@ namespace Services.UI
         /// </summary>
         public void ClearStatus()
         {
-            if (statusText != null)
+            if (MessagePanel.IsReady())
             {
-                statusText.text = defaultStatusMessage;
-                statusMessageTimer = 0f;
+                MessagePanel.instance.ClearMessage();
             }
         }
 

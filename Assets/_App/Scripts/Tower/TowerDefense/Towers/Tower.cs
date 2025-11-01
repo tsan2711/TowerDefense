@@ -11,12 +11,22 @@ namespace TowerDefense.Towers
 	/// <summary>
 	/// Common functionality for all types of towers
 	/// </summary>
+	public enum MainTower{
+		Emp = 0,
+		Laser = 1,
+		MachineGun = 2,
+		Pylon = 3,
+		Rocket = 4,
+		SuperTower = 5,
+	}
 	public class Tower : Targetable
 	{
 		/// <summary>
 		/// The tower levels associated with this tower
 		/// </summary>
 		public TowerLevel[] levels;
+
+		public MainTower mainTower;
 
 		/// <summary>
 		/// A generalised name common to a levels

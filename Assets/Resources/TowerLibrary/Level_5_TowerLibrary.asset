@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a97a92b0d8cf4ef195477adef7115950, type: 3}
+  m_Name: Level_5_TowerLibrary
+  m_EditorClassIdentifier: Assembly-CSharp::TowerDefense.Towers.Data.TowerLibrary
+  configurations:
+  - {fileID: 8938299889280779302, guid: fb50abaff81ee4c7fabd31f34a0ffd89, type: 3}
+  - {fileID: 3370667440117777857, guid: e6c5d08db6ee543abb687d46ad3f5ce8, type: 3}
+  - {fileID: 2660917891249552982, guid: 36c5e28c5b422476c81a2d3f67e6d813, type: 3}
+  - {fileID: 8092069997328486706, guid: b9b94b84f719643e5bc03886cc14dee8, type: 3}

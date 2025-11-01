@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Services.Data
 {
@@ -27,6 +28,13 @@ namespace Services.Data
         public string towerLibraryPrefabName;
 
         /// <summary>
+        /// List các Tower prefab types (TowerPrefabType enum as int = MainTower enum) cho level library này
+        /// TowerPrefabType map với MainTower enum: Emp, Laser, MachineGun, Pylon, Rocket, SuperTower
+        /// Towers sẽ được load từ Resources/Tower với tên prefab tương ứng với enum value (ví dụ: Resources/Tower/Emp)
+        /// </summary>
+        public List<int> towerPrefabTypes;
+
+        /// <summary>
         /// Mô tả cho level library này
         /// </summary>
         public string description;
@@ -37,6 +45,25 @@ namespace Services.Data
         public LevelLibraryType GetLevelLibraryType()
         {
             return (LevelLibraryType)type;
+        }
+
+        /// <summary>
+        /// Convert list of tower prefab types to TowerPrefabType enum list
+        /// </summary>
+        public List<TowerPrefabType> GetTowerPrefabTypes()
+        {
+            List<TowerPrefabType> types = new List<TowerPrefabType>();
+            if (towerPrefabTypes != null)
+            {
+                foreach (int typeValue in towerPrefabTypes)
+                {
+                    if (System.Enum.IsDefined(typeof(TowerPrefabType), typeValue))
+                    {
+                        types.Add((TowerPrefabType)typeValue);
+                    }
+                }
+            }
+            return types;
         }
     }
 }
