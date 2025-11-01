@@ -265,6 +265,104 @@ namespace Services.Firestore
         {
             return Enum.IsDefined(typeof(TowerType), typeValue);
         }
+
+        /// <summary>
+        /// Get default LevelLibraryConfig data for all LevelLibraryType enum values
+        /// Maps level IDs from LevelList to TowerLibrary prefab names
+        /// </summary>
+        public static List<LevelLibraryConfigData> GetDefaultLevelLibraryConfigs()
+        {
+            var configs = new List<LevelLibraryConfigData>();
+            var enumValues = Enum.GetValues(typeof(LevelLibraryType));
+            
+            foreach (LevelLibraryType libraryType in enumValues)
+            {
+                var config = new LevelLibraryConfigData
+                {
+                    type = (int)libraryType,
+                    levelId = GetLevelIdForLibraryType(libraryType),
+                    towerLibraryPrefabName = GetTowerLibraryPrefabName(libraryType),
+                    description = GetLevelLibraryDescription(libraryType)
+                };
+                configs.Add(config);
+            }
+            
+            return configs;
+        }
+
+        private static string GetLevelIdForLibraryType(LevelLibraryType libraryType)
+        {
+            switch (libraryType)
+            {
+                case LevelLibraryType.Level_1:
+                    return "level_1";
+                case LevelLibraryType.Level_2:
+                    return "level_2";
+                case LevelLibraryType.Level_3:
+                    return "level_3";
+                case LevelLibraryType.Level_4:
+                    return "level_4";
+                case LevelLibraryType.Level_5:
+                    return "level_5";
+                case LevelLibraryType.Tutorial:
+                    return "tutorial";
+                default:
+                    return libraryType.ToString().ToLower().Replace("_", "");
+            }
+        }
+
+        private static string GetTowerLibraryPrefabName(LevelLibraryType libraryType)
+        {
+            // Map to Resources path or prefab name
+            // Assumes prefabs are in Resources folder or use full path
+            switch (libraryType)
+            {
+                case LevelLibraryType.Level_1:
+                    return "Level_1_TowerLibrary";
+                case LevelLibraryType.Level_2:
+                    return "Level_2_TowerLibrary";
+                case LevelLibraryType.Level_3:
+                    return "Level_3_TowerLibrary";
+                case LevelLibraryType.Level_4:
+                    return "Level_4_TowerLibrary";
+                case LevelLibraryType.Level_5:
+                    return "Level_5_TowerLibrary";
+                case LevelLibraryType.Tutorial:
+                    return "Tutorial_TowerLibrary";
+                default:
+                    return $"{libraryType}_TowerLibrary";
+            }
+        }
+
+        private static string GetLevelLibraryDescription(LevelLibraryType libraryType)
+        {
+            switch (libraryType)
+            {
+                case LevelLibraryType.Level_1:
+                    return "Tower library configuration for Level 1";
+                case LevelLibraryType.Level_2:
+                    return "Tower library configuration for Level 2";
+                case LevelLibraryType.Level_3:
+                    return "Tower library configuration for Level 3";
+                case LevelLibraryType.Level_4:
+                    return "Tower library configuration for Level 4";
+                case LevelLibraryType.Level_5:
+                    return "Tower library configuration for Level 5";
+                case LevelLibraryType.Tutorial:
+                    return "Tower library configuration for Tutorial level";
+                default:
+                    return $"Tower library configuration for {libraryType}";
+            }
+        }
+
+        /// <summary>
+        /// Check if an enum value exists in the enum type
+        /// Used to validate data from backend
+        /// </summary>
+        public static bool IsValidLevelLibraryType(int typeValue)
+        {
+            return Enum.IsDefined(typeof(LevelLibraryType), typeValue);
+        }
     }
 }
 

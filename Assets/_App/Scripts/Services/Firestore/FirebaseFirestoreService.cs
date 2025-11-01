@@ -1113,6 +1113,14 @@ namespace Services.Firestore
                     allSuccess = false;
                 }
 
+                // Initialize LevelLibraryConfig collection (chỉ tạo, không update)
+                bool levelLibraryConfigSuccess = await InitializeLevelLibraryConfigCollectionAsync();
+                if (!levelLibraryConfigSuccess)
+                {
+                    Debug.LogWarning("[FirebaseFirestoreService] Failed to initialize LevelLibraryConfig collection");
+                    allSuccess = false;
+                }
+
                 if (allSuccess)
                 {
                     Debug.Log("[FirebaseFirestoreService] All collections initialized successfully");
@@ -1512,6 +1520,110 @@ namespace Services.Firestore
                 {
                     Debug.LogError($"[FirebaseFirestoreService] Error initializing {COLLECTION_LEVEL_LIST}: {errorMsg}");
                 }
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Initialize LevelLibraryConfig collection with default data for all enum values
+        /// Creates documents for all LevelLibraryType enum values mapping level IDs to prefab names
+        /// </summary>
+        private async Task<bool> InitializeLevelLibraryConfigCollectionAsync()
+        {
+            try
+            {
+                // Get default configurations for all enum values
+                List<LevelLibraryConfigData> defaultConfigs = DefaultGameData.GetDefaultLevelLibraryConfigs();
+                
+                if (defaultConfigs == null || defaultConfigs.Count == 0)
+                {
+                    Debug.LogError("[FirebaseFirestoreService] GetDefaultLevelLibraryConfigs returned empty list!");
+                    return false;
+                }
+                
+                Debug.Log($"[FirebaseFirestoreService] Preparing to initialize {defaultConfigs.Count} level library configs");
+                
+                // Check existing documents
+                QuerySnapshot existingSnapshot = await firestore.Collection(COLLECTION_LEVEL_LIBRARY_CONFIG)
+                    .GetSnapshotAsync();
+                
+                HashSet<int> existingTypes = new HashSet<int>();
+                foreach (DocumentSnapshot doc in existingSnapshot.Documents)
+                {
+                    if (doc.TryGetValue("type", out object typeObj) && typeObj != null)
+                    {
+                        try
+                        {
+                            int type = Convert.ToInt32(typeObj);
+                            existingTypes.Add(type);
+                        }
+                        catch { }
+                    }
+                }
+                
+                Debug.Log($"[FirebaseFirestoreService] Found {existingTypes.Count} existing level library config documents in Firestore");
+                
+                int createdCount = 0;
+                int skippedCount = 0;
+                
+                // Create documents for all enum values (skip if already exist to preserve existing data)
+                foreach (var config in defaultConfigs)
+                {
+                    // Validate enum value exists in client
+                    if (!DefaultGameData.IsValidLevelLibraryType(config.type))
+                    {
+                        Debug.LogWarning($"[FirebaseFirestoreService] Skipping invalid LevelLibraryType: {config.type}");
+                        skippedCount++;
+                        continue;
+                    }
+                    
+                    // Use padded document ID (2 digits) to ensure correct sorting: "00", "01", ..., "05"
+                    string docId = config.type.ToString("D2"); // "D2" = decimal format with 2 digits padding
+                    DocumentReference docRef = firestore.Collection(COLLECTION_LEVEL_LIBRARY_CONFIG).Document(docId);
+                    
+                    Dictionary<string, object> data = new Dictionary<string, object>
+                    {
+                        { "type", config.type },
+                        { "levelId", config.levelId ?? "" },
+                        { "towerLibraryPrefabName", config.towerLibraryPrefabName ?? "" },
+                        { "description", config.description ?? "" },
+                        { "updatedAt", Timestamp.GetCurrentTimestamp() }
+                    };
+                    
+                    if (!existingTypes.Contains(config.type))
+                    {
+                        // Create new document
+                        data["createdAt"] = Timestamp.GetCurrentTimestamp();
+                        await docRef.SetAsync(data);
+                        createdCount++;
+                        Debug.Log($"[FirebaseFirestoreService] Created level library config type {config.type} ({docId}) - levelId: {config.levelId}, prefab: {config.towerLibraryPrefabName}");
+                    }
+                    else
+                    {
+                        // ✅ QUAN TRỌNG: Không update document đã tồn tại để preserve data từ backend
+                        // Chỉ log để debug
+                        skippedCount++;
+                        Debug.Log($"[FirebaseFirestoreService] Level library config type {config.type} ({docId}) already exists, skipping to preserve existing data");
+                    }
+                }
+                
+                Debug.Log($"[FirebaseFirestoreService] ✅ Initialized {COLLECTION_LEVEL_LIBRARY_CONFIG}: {createdCount} created, {skippedCount} skipped (total: {defaultConfigs.Count})");
+                return true;
+            }
+            catch (Exception e)
+            {
+                string errorMsg = e.Message;
+                if (errorMsg.Contains("permission") || errorMsg.Contains("Permission"))
+                {
+                    Debug.LogError($"[FirebaseFirestoreService] Permission denied when initializing {COLLECTION_LEVEL_LIBRARY_CONFIG}. " +
+                                 $"Vui lòng cấu hình Firestore Rules trong Firebase Console. " +
+                                 $"Xem hướng dẫn: FIRESTORE_RULES_SETUP.md");
+                }
+                else
+                {
+                    Debug.LogError($"[FirebaseFirestoreService] Error initializing {COLLECTION_LEVEL_LIBRARY_CONFIG}: {errorMsg}");
+                }
+                Debug.LogError($"[FirebaseFirestoreService] Full exception: {e}");
                 return false;
             }
         }
