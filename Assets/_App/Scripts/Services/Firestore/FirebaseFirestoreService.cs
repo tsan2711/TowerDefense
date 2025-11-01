@@ -39,12 +39,14 @@ namespace Services.Firestore
         private List<AgentConfigurationData> cachedAgentConfigurations;
         private List<TowerLevelDataData> cachedTowerLevelData;
         private LevelListData cachedLevelList;
+        private List<LevelLibraryConfigData> cachedLevelLibraryConfigs;
         private bool isConfigDataLoaded = false;
 
         // Collection names - fallback defaults
         private const string DEFAULT_COLLECTION_AGENT_CONFIGURATIONS = "AgentConfigurations";
         private const string DEFAULT_COLLECTION_TOWER_LEVEL_DATA = "TowerLevelData";
         private const string DEFAULT_COLLECTION_LEVEL_LIST = "LevelList";
+        private const string DEFAULT_COLLECTION_LEVEL_LIBRARY_CONFIG = "LevelLibraryConfig";
         private const string DEFAULT_COLLECTION_USERS = "users";
 
         // Properties to get collection names from config
@@ -54,12 +56,15 @@ namespace Services.Firestore
             FirebaseConfigManager.Instance?.GetTowerLevelDataCollection() ?? DEFAULT_COLLECTION_TOWER_LEVEL_DATA;
         private string COLLECTION_LEVEL_LIST => 
             FirebaseConfigManager.Instance?.GetLevelListCollection() ?? DEFAULT_COLLECTION_LEVEL_LIST;
+        private string COLLECTION_LEVEL_LIBRARY_CONFIG => 
+            FirebaseConfigManager.Instance?.GetLevelLibraryConfigCollection() ?? DEFAULT_COLLECTION_LEVEL_LIBRARY_CONFIG;
         private string COLLECTION_USERS => DEFAULT_COLLECTION_USERS;
 
         // Events
         public event Action<List<AgentConfigurationData>> OnAgentConfigurationsLoaded;
         public event Action<List<TowerLevelDataData>> OnTowerLevelDataLoaded;
         public event Action<LevelListData> OnLevelListLoaded;
+        public event Action<List<LevelLibraryConfigData>> OnLevelLibraryConfigsLoaded;
         public event Action OnAllConfigDataLoaded;
 
         public bool IsInitialized => isInitialized;
@@ -560,8 +565,9 @@ namespace Services.Firestore
                 Task<List<AgentConfigurationData>> agentTask = LoadAgentConfigurationsAsync();
                 Task<List<TowerLevelDataData>> towerTask = LoadTowerLevelDataAsync();
                 Task<LevelListData> levelTask = LoadLevelListAsync();
+                Task<List<LevelLibraryConfigData>> levelLibraryTask = LoadLevelLibraryConfigsAsync();
 
-                await Task.WhenAll(agentTask, towerTask, levelTask);
+                await Task.WhenAll(agentTask, towerTask, levelTask, levelLibraryTask);
 
                 // Sync data vào ScriptableObjects sau khi load xong
                 Debug.Log("[FirebaseFirestoreService] Syncing data to ScriptableObjects...");
@@ -594,6 +600,11 @@ namespace Services.Firestore
         public LevelListData GetCachedLevelList()
         {
             return cachedLevelList ?? new LevelListData();
+        }
+
+        public List<LevelLibraryConfigData> GetCachedLevelLibraryConfigs()
+        {
+            return cachedLevelLibraryConfigs ?? new List<LevelLibraryConfigData>();
         }
 
         private AgentConfigurationData ParseAgentConfiguration(Dictionary<string, object> data)
@@ -737,6 +748,176 @@ namespace Services.Firestore
             catch (Exception e)
             {
                 Debug.LogError($"[FirebaseFirestoreService] Error parsing LevelItem: {e.Message}");
+                return null;
+            }
+        }
+
+        public async Task<List<LevelLibraryConfigData>> LoadLevelLibraryConfigsAsync()
+        {
+#if !FIREBASE_FIRESTORE_AVAILABLE
+            Debug.LogError("[FirebaseFirestoreService] Firebase Firestore package chưa được cài đặt!");
+            return new List<LevelLibraryConfigData>();
+#else
+            if (!isInitialized || firestore == null)
+            {
+                Debug.LogError("[FirebaseFirestoreService] Service not initialized");
+                return new List<LevelLibraryConfigData>();
+            }
+
+            try
+            {
+                QuerySnapshot snapshot = await firestore.Collection(COLLECTION_LEVEL_LIBRARY_CONFIG).GetSnapshotAsync();
+
+                Debug.Log($"[FirebaseFirestoreService] Loading LevelLibraryConfig: Found {snapshot.Count} documents in collection");
+                
+                List<LevelLibraryConfigData> configs = new List<LevelLibraryConfigData>();
+                foreach (DocumentSnapshot document in snapshot.Documents)
+                {
+                    Dictionary<string, object> data = document.ToDictionary();
+                    LevelLibraryConfigData config = ParseLevelLibraryConfig(data);
+                    if (config != null)
+                    {
+                        configs.Add(config);
+                    }
+                }
+
+                cachedLevelLibraryConfigs = configs;
+                OnLevelLibraryConfigsLoaded?.Invoke(configs);
+                Debug.Log($"[FirebaseFirestoreService] Loaded {configs.Count} LevelLibraryConfigs");
+                return configs;
+            }
+            catch (Exception e)
+            {
+                string errorMsg = e.Message;
+                if (errorMsg.Contains("permission") || errorMsg.Contains("Permission"))
+                {
+                    Debug.LogError($"[FirebaseFirestoreService] Permission denied when loading LevelLibraryConfig. " +
+                                 $"Vui lòng cấu hình Firestore Rules trong Firebase Console. " +
+                                 $"Xem hướng dẫn: FIRESTORE_RULES_SETUP.md");
+                }
+                else
+                {
+                    Debug.LogError($"[FirebaseFirestoreService] Error loading LevelLibraryConfig: {errorMsg}");
+                }
+                Debug.LogError($"[FirebaseFirestoreService] Full exception: {e}");
+                return new List<LevelLibraryConfigData>();
+            }
+#endif
+        }
+
+        public async Task<LevelLibraryConfigData> LoadLevelLibraryConfigByLevelIdAsync(string levelId)
+        {
+#if !FIREBASE_FIRESTORE_AVAILABLE
+            Debug.LogError("[FirebaseFirestoreService] Firebase Firestore package chưa được cài đặt!");
+            return null;
+#else
+            if (!isInitialized || firestore == null)
+            {
+                Debug.LogError("[FirebaseFirestoreService] Service not initialized");
+                return null;
+            }
+
+            try
+            {
+                Query query = firestore.Collection(COLLECTION_LEVEL_LIBRARY_CONFIG)
+                    .WhereEqualTo("levelId", levelId);
+                QuerySnapshot snapshot = await query.GetSnapshotAsync();
+
+                if (snapshot.Count > 0)
+                {
+                    DocumentSnapshot firstDoc = snapshot.Documents.FirstOrDefault();
+                    if (firstDoc != null)
+                    {
+                        Dictionary<string, object> data = firstDoc.ToDictionary();
+                        LevelLibraryConfigData config = ParseLevelLibraryConfig(data);
+                        Debug.Log($"[FirebaseFirestoreService] Loaded LevelLibraryConfig for levelId: {levelId}");
+                        return config;
+                    }
+                }
+
+                Debug.LogWarning($"[FirebaseFirestoreService] No LevelLibraryConfig found for levelId: {levelId}");
+                return null;
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[FirebaseFirestoreService] Error loading LevelLibraryConfig by levelId: {e.Message}");
+                return null;
+            }
+#endif
+        }
+
+        public async Task<LevelLibraryConfigData> LoadLevelLibraryConfigByTypeAsync(int type)
+        {
+#if !FIREBASE_FIRESTORE_AVAILABLE
+            Debug.LogError("[FirebaseFirestoreService] Firebase Firestore package chưa được cài đặt!");
+            return null;
+#else
+            if (!isInitialized || firestore == null)
+            {
+                Debug.LogError("[FirebaseFirestoreService] Service not initialized");
+                return null;
+            }
+
+            try
+            {
+                Query query = firestore.Collection(COLLECTION_LEVEL_LIBRARY_CONFIG)
+                    .WhereEqualTo("type", type);
+                QuerySnapshot snapshot = await query.GetSnapshotAsync();
+
+                if (snapshot.Count > 0)
+                {
+                    DocumentSnapshot firstDoc = snapshot.Documents.FirstOrDefault();
+                    if (firstDoc != null)
+                    {
+                        Dictionary<string, object> data = firstDoc.ToDictionary();
+                        LevelLibraryConfigData config = ParseLevelLibraryConfig(data);
+                        Debug.Log($"[FirebaseFirestoreService] Loaded LevelLibraryConfig for type: {type}");
+                        return config;
+                    }
+                }
+
+                Debug.LogWarning($"[FirebaseFirestoreService] No LevelLibraryConfig found for type: {type}");
+                return null;
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[FirebaseFirestoreService] Error loading LevelLibraryConfig by type: {e.Message}");
+                return null;
+            }
+#endif
+        }
+
+        private LevelLibraryConfigData ParseLevelLibraryConfig(Dictionary<string, object> data)
+        {
+            try
+            {
+                LevelLibraryConfigData config = new LevelLibraryConfigData();
+                
+                if (data.ContainsKey("type") && data["type"] != null)
+                {
+                    config.type = Convert.ToInt32(data["type"]);
+                }
+                
+                if (data.ContainsKey("levelId") && data["levelId"] != null)
+                {
+                    config.levelId = data["levelId"].ToString();
+                }
+                
+                if (data.ContainsKey("towerLibraryPrefabName") && data["towerLibraryPrefabName"] != null)
+                {
+                    config.towerLibraryPrefabName = data["towerLibraryPrefabName"].ToString();
+                }
+                
+                if (data.ContainsKey("description") && data["description"] != null)
+                {
+                    config.description = data["description"].ToString();
+                }
+
+                return config;
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[FirebaseFirestoreService] Error parsing LevelLibraryConfig: {e.Message}");
                 return null;
             }
         }
@@ -1377,6 +1558,7 @@ namespace Services.Firestore
             cachedAgentConfigurations = null;
             cachedTowerLevelData = null;
             cachedLevelList = null;
+            cachedLevelLibraryConfigs = null;
             isConfigDataLoaded = false;
         }
 

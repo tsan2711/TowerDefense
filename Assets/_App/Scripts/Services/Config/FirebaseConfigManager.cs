@@ -149,6 +149,14 @@ namespace Services.Managers
         {
             return IsInitialized ? configData.levelListCollection : "LevelList";
         }
+
+        /// <summary>
+        /// Get collection name for LevelLibraryConfig
+        /// </summary>
+        public string GetLevelLibraryConfigCollection()
+        {
+            return IsInitialized ? configData.levelLibraryConfigCollection : "LevelLibraryConfig";
+        }
     }
 }
 

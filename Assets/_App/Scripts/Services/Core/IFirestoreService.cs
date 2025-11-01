@@ -27,6 +27,11 @@ namespace Services.Core
         event Action<LevelListData> OnLevelListLoaded;
 
         /// <summary>
+        /// Event fired when LevelLibraryConfigs are loaded
+        /// </summary>
+        event Action<List<LevelLibraryConfigData>> OnLevelLibraryConfigsLoaded;
+
+        /// <summary>
         /// Event fired when all configuration data is loaded
         /// </summary>
         event Action OnAllConfigDataLoaded;
@@ -81,6 +86,26 @@ namespace Services.Core
         /// Get cached LevelList
         /// </summary>
         LevelListData GetCachedLevelList();
+
+        /// <summary>
+        /// Load all LevelLibraryConfig from Firestore
+        /// </summary>
+        Task<List<LevelLibraryConfigData>> LoadLevelLibraryConfigsAsync();
+
+        /// <summary>
+        /// Load LevelLibraryConfig filtered by levelId
+        /// </summary>
+        Task<LevelLibraryConfigData> LoadLevelLibraryConfigByLevelIdAsync(string levelId);
+
+        /// <summary>
+        /// Load LevelLibraryConfig filtered by type
+        /// </summary>
+        Task<LevelLibraryConfigData> LoadLevelLibraryConfigByTypeAsync(int type);
+
+        /// <summary>
+        /// Get cached LevelLibraryConfigs
+        /// </summary>
+        List<LevelLibraryConfigData> GetCachedLevelLibraryConfigs();
 
         /// <summary>
         /// Save or update user data in Firestore users collection

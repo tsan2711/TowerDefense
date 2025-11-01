@@ -39,6 +39,9 @@ namespace Services.Config
         
         [Tooltip("Tên collection cho LevelList")]
         public string levelListCollection = "LevelList";
+        
+        [Tooltip("Tên collection cho LevelLibraryConfig")]
+        public string levelLibraryConfigCollection = "LevelLibraryConfig";
 
         [Header("Environment Settings")]
         [Tooltip("Tên môi trường (dev, staging, production)")]

@@ -15,7 +15,7 @@ MonoBehaviour:
   towerType: 12
   description: Rocket Tower Level 1 - Balanced defensive structure
   upgradeDescription: Upgrade to Rocket Level 2 for increased power
-  cost: 110
+  cost: 5
   sell: 66
   maxHealth: 150
   startingHealth: 150
