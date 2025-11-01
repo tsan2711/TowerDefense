@@ -304,11 +304,11 @@ namespace UnityEngine.PostProcessing
             if (profile == null || m_Camera == null)
                 return;
 
-            if (m_EyeAdaptation.active && profile.debugViews.IsModeActive(DebugMode.EyeAdaptation))
+            if (m_EyeAdaptation != null && m_EyeAdaptation.active && profile.debugViews.IsModeActive(DebugMode.EyeAdaptation))
                 m_EyeAdaptation.OnGUI();
-            else if (m_ColorGrading.active && profile.debugViews.IsModeActive(DebugMode.LogLut))
+            else if (m_ColorGrading != null && m_ColorGrading.active && profile.debugViews.IsModeActive(DebugMode.LogLut))
                 m_ColorGrading.OnGUI();
-            else if (m_UserLut.active && profile.debugViews.IsModeActive(DebugMode.UserLut))
+            else if (m_UserLut != null && m_UserLut.active && profile.debugViews.IsModeActive(DebugMode.UserLut))
                 m_UserLut.OnGUI();
         }
 

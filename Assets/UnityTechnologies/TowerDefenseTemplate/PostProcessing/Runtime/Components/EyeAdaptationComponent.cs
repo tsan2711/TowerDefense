@@ -34,7 +34,9 @@ namespace UnityEngine.PostProcessing
         {
             get
             {
-                return model.enabled
+                return model != null
+                       && context != null
+                       && model.enabled
                        && SystemInfo.supportsComputeShaders
                        && !context.interrupted;
             }
@@ -176,6 +178,9 @@ namespace UnityEngine.PostProcessing
         public void OnGUI()
         {
             if (m_DebugHistogram == null || !m_DebugHistogram.IsCreated())
+                return;
+
+            if (context == null)
                 return;
 
             var rect = new Rect(context.viewport.x * Screen.width + 8f, 8f, m_DebugHistogram.width, m_DebugHistogram.height);

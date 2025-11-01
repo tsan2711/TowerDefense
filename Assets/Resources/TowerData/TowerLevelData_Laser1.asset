@@ -9,13 +9,13 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 24e2352be0954e359a850a9d99215c6e, type: 3}
+  m_Script: {fileID: 11500000, guid: cb618aac8342449e597ee6a2c6ed3dea, type: 3}
   m_Name: TowerLevelData_Laser1
   m_EditorClassIdentifier: Assembly-CSharp::TowerDefense.Towers.Data.TowerLevelData
   towerType: 3
   description: Laser Tower Level 1 - Balanced defensive structure
   upgradeDescription: Upgrade to Laser Level 2 for increased power
-  cost: 9
+  cost: 90
   sell: 54
   maxHealth: 150
   startingHealth: 150
