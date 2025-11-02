@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
 using Services.Core;
@@ -7,7 +9,6 @@ using Services.Managers;
 using Firebase;
 using Firebase.Auth;
 using Firebase.Extensions;
-using System.Collections;
 
 namespace Services.Auth
 {
@@ -466,48 +467,63 @@ namespace Services.Auth
             {
                 isLoadingConfigData = true;
                 
-                // Get FirestoreService from ServiceLocator
-                IFirestoreService firestoreService = ServiceLocator.Instance.GetService<IFirestoreService>();
+                // Get microservices from ServiceLocator - following microservice architecture pattern
+                IUserDataService userDataService = ServiceLocator.Instance.GetService<IUserDataService>();
+                IAgentConfigurationService agentConfigService = ServiceLocator.Instance.GetService<IAgentConfigurationService>();
+                ITowerDataService towerDataService = ServiceLocator.Instance.GetService<ITowerDataService>();
+                ILevelManagementService levelManagementService = ServiceLocator.Instance.GetService<ILevelManagementService>();
                 
-                if (firestoreService != null && firestoreService.IsInitialized)
+                // Save user data first (creates/updates user document in Firestore)
+                if (currentUserInfo != null && userDataService != null && userDataService.IsInitialized)
                 {
-                    // Save user data first (creates/updates user document in Firestore)
-                    if (currentUserInfo != null)
+                    Debug.Log("[FirebaseAuthService] Saving user data to Firestore...");
+                    bool saveSuccess = await userDataService.SaveUserDataAsync(currentUserInfo);
+                    if (saveSuccess)
                     {
-                        Debug.Log("[FirebaseAuthService] Saving user data to Firestore...");
-                        bool saveSuccess = await firestoreService.SaveUserDataAsync(currentUserInfo);
-                        if (saveSuccess)
-                        {
-                            Debug.Log("[FirebaseAuthService] User data saved successfully to Firestore");
-                        }
-                        else
-                        {
-                            Debug.LogWarning("[FirebaseAuthService] Failed to save user data to Firestore");
-                        }
-                    }
-
-                    // ✅ QUAN TRỌNG: Chỉ initialize collections khi chúng hoàn toàn empty
-                    // Không tạo/update nếu collections đã có data (preserve existing data)
-                    Debug.Log("[FirebaseAuthService] Checking if collections need initialization...");
-                    bool initSuccess = await firestoreService.InitializeCollectionsIfEmptyAsync();
-                    if (initSuccess)
-                    {
-                        Debug.Log("[FirebaseAuthService] Collections check/initialization completed");
+                        Debug.Log("[FirebaseAuthService] User data saved successfully to Firestore");
                     }
                     else
                     {
-                        Debug.LogWarning("[FirebaseAuthService] Failed to check/initialize collections");
+                        Debug.LogWarning("[FirebaseAuthService] Failed to save user data to Firestore");
                     }
+                }
 
-                    // ✅ Load configuration data từ backend (luôn load, không phụ thuộc vào initialization)
-                    Debug.Log("[FirebaseAuthService] Loading configuration data from Firestore...");
-                    await firestoreService.LoadAllConfigDataAsync();
-                    Debug.Log("[FirebaseAuthService] Configuration data loaded successfully");
+                // ✅ QUAN TRỌNG: Chỉ initialize collections khi chúng hoàn toàn empty
+                // Không tạo/update nếu collections đã có data (preserve existing data)
+                Debug.Log("[FirebaseAuthService] Checking if collections need initialization...");
+                bool allInitSuccess = true;
+                
+                if (agentConfigService != null && agentConfigService.IsInitialized)
+                {
+                    bool initSuccess = await agentConfigService.InitializeCollectionIfEmptyAsync();
+                    if (!initSuccess) allInitSuccess = false;
+                }
+                
+                if (towerDataService != null && towerDataService.IsInitialized)
+                {
+                    bool initSuccess = await towerDataService.InitializeCollectionIfEmptyAsync();
+                    if (!initSuccess) allInitSuccess = false;
+                }
+                
+                if (levelManagementService != null && levelManagementService.IsInitialized)
+                {
+                    bool initSuccess = await levelManagementService.InitializeCollectionsIfEmptyAsync();
+                    if (!initSuccess) allInitSuccess = false;
+                }
+                
+                if (allInitSuccess)
+                {
+                    Debug.Log("[FirebaseAuthService] Collections check/initialization completed");
                 }
                 else
                 {
-                    Debug.LogWarning("[FirebaseAuthService] FirestoreService not available, skipping user data save and config data load");
+                    Debug.LogWarning("[FirebaseAuthService] Some collections failed to initialize");
                 }
+
+                // ✅ Load configuration data từ backend (luôn load, không phụ thuộc vào initialization)
+                Debug.Log("[FirebaseAuthService] Loading configuration data from Firestore microservices...");
+                await LoadAllConfigurationDataAsync(agentConfigService, towerDataService, levelManagementService);
+                Debug.Log("[FirebaseAuthService] Configuration data loaded successfully");
             }
             catch (Exception e)
             {
@@ -516,6 +532,64 @@ namespace Services.Auth
             finally
             {
                 isLoadingConfigData = false;
+            }
+        }
+
+        /// <summary>
+        /// Load all configuration data from microservices
+        /// Microservice Pattern: Orchestrates data loading from multiple domain services
+        /// </summary>
+        private async Task LoadAllConfigurationDataAsync(
+            IAgentConfigurationService agentConfigService,
+            ITowerDataService towerDataService,
+            ILevelManagementService levelManagementService)
+        {
+            try
+            {
+                // Load all data in parallel from microservices
+                List<Task> loadTasks = new List<Task>();
+                
+                if (agentConfigService != null && agentConfigService.IsInitialized)
+                {
+                    loadTasks.Add(agentConfigService.LoadAgentConfigurationsAsync());
+                }
+                
+                if (towerDataService != null && towerDataService.IsInitialized)
+                {
+                    loadTasks.Add(towerDataService.LoadTowerLevelDataAsync());
+                }
+                
+                if (levelManagementService != null && levelManagementService.IsInitialized)
+                {
+                    loadTasks.Add(levelManagementService.LoadLevelListAsync());
+                    loadTasks.Add(levelManagementService.LoadLevelLibraryConfigsAsync());
+                }
+
+                await Task.WhenAll(loadTasks);
+
+                // Sync data vào ScriptableObjects sau khi load xong
+                Debug.Log("[FirebaseAuthService] Syncing data to ScriptableObjects...");
+                if (towerDataService != null)
+                {
+                    GameDataSyncService.SyncTowerLevelDataToScriptableObjects(towerDataService.GetCachedTowerLevelData());
+                }
+                
+                if (agentConfigService != null)
+                {
+                    GameDataSyncService.SyncAgentConfigurationsToScriptableObjects(agentConfigService.GetCachedAgentConfigurations());
+                }
+                
+                if (levelManagementService != null)
+                {
+                    GameDataSyncService.SyncLevelListToScriptableObject(levelManagementService.GetCachedLevelList());
+                    GameDataSyncService.SyncLevelLibraryConfigsToContainer(levelManagementService.GetCachedLevelLibraryConfigs());
+                }
+                
+                Debug.Log("[FirebaseAuthService] ScriptableObject sync completed");
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[FirebaseAuthService] Error loading configuration data: {e.Message}");
             }
         }
 

@@ -739,10 +739,24 @@ PlayerSettings:
   webWasm2023: 0
   webEnableSubmoduleStrippingCompatibility: 0
   scriptingDefineSymbols:
-    Android: FIREBASE_FIRESTORE_AVAILABLE
-    Standalone: FIREBASE_FIRESTORE_AVAILABLE
-    WebGL: FIREBASE_FIRESTORE_AVAILABLE
-    iPhone: FIREBASE_FIRESTORE_AVAILABLE
+    Android: FIREBASE_FIRESTORE_AVAILABLE;DOTWEEN
+    EmbeddedLinux: DOTWEEN
+    GameCoreScarlett: DOTWEEN
+    GameCoreXboxOne: DOTWEEN
+    Kepler: DOTWEEN
+    LinuxHeadlessSimulation: DOTWEEN
+    Nintendo Switch: DOTWEEN
+    PS4: DOTWEEN
+    PS5: DOTWEEN
+    QNX: DOTWEEN
+    ReservedCFE: DOTWEEN
+    Standalone: FIREBASE_FIRESTORE_AVAILABLE;DOTWEEN
+    VisionOS: DOTWEEN
+    WebGL: FIREBASE_FIRESTORE_AVAILABLE;DOTWEEN
+    Windows Store Apps: DOTWEEN
+    XboxOne: DOTWEEN
+    iPhone: FIREBASE_FIRESTORE_AVAILABLE;DOTWEEN
+    tvOS: DOTWEEN
   additionalCompilerArguments: {}
   platformArchitecture: {}
   scriptingBackend:

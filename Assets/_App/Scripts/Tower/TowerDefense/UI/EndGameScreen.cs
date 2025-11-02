@@ -6,6 +6,8 @@ using TowerDefense.Level;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using DG.Tweening;
+using Services.UI;
 
 namespace TowerDefense.UI
 {
@@ -67,6 +69,12 @@ namespace TowerDefense.UI
 		public Color winBackgroundColor;
 		
 		public Color loseBackgroundColor;
+		
+		[Header("Animation Settings")]
+		[Tooltip("Thời gian animation khi show end game screen (giây)")]
+		public float animationDuration = 0.5f;
+		[Tooltip("Loại animation cho end game screen")]
+		public UIAnimationHelper.AnimationType animationType = UIAnimationHelper.AnimationType.Scale;
 
 		/// <summary>
 		/// The Canvas that holds the button to go to the next level
@@ -148,12 +156,17 @@ namespace TowerDefense.UI
 		}
 
 		/// <summary>
-		/// Shows the end game screen
+		/// Shows the end game screen với animation mượt mà
 		/// </summary>
 		protected void OpenEndGameScreen(string endResultText)
 		{
 			LevelItem level = GameManager.instance.GetLevelForCurrentScene();
-			endGameCanvas.enabled = true;
+			
+			// Enable canvas trước
+			if (endGameCanvas != null)
+			{
+				endGameCanvas.enabled = true;
+			}
 
 			int score = CalculateFinalScore();
 			scorePanel.SetStars(score);
@@ -169,6 +182,11 @@ namespace TowerDefense.UI
 				endGameMessageText.text = string.Format (endResultText, levelName.ToUpper ());
 			}
 
+			// Show với animation mượt mà
+			if (endGameCanvas != null)
+			{
+				UIAnimationHelper.ShowPanel(endGameCanvas.gameObject, animationType, animationDuration);
+			}
 
 			if (!HUD.GameUI.instanceExists)
 			{
@@ -191,7 +209,11 @@ namespace TowerDefense.UI
 			{
 				audioSource.PlayOneShot(victorySound);
 			}
-			background.color = winBackgroundColor;
+			// Animate background color change
+			if (background != null)
+			{
+				background.DOColor(winBackgroundColor, animationDuration);
+			}
 
 			//first check if there are any more levels after this one
 			if (nextLevelButton == null || !GameManager.instanceExists)
@@ -215,12 +237,21 @@ namespace TowerDefense.UI
 			//hide the next level button
 			if (index < 0 || index == levelCount - 1)
 			{
-				nextLevelButton.enabled = false;
-				nextLevelButton.gameObject.SetActive(false);
+				if (nextLevelButton != null)
+				{
+					nextLevelButton.enabled = false;
+					if (nextLevelButton.gameObject.activeSelf)
+					{
+						UIAnimationHelper.HidePanel(nextLevelButton.gameObject, animationType, animationDuration * 0.7f);
+					}
+				}
 				return;
 			}
-			nextLevelButton.enabled = true;
-			nextLevelButton.gameObject.SetActive(true);
+			if (nextLevelButton != null)
+			{
+				nextLevelButton.enabled = true;
+				UIAnimationHelper.ShowPanel(nextLevelButton.gameObject, animationType, animationDuration * 0.7f);
+			}
 		}
 
 		/// <summary>
@@ -232,13 +263,20 @@ namespace TowerDefense.UI
 			if (nextLevelButton != null)
 			{
 				nextLevelButton.enabled = false;
-				nextLevelButton.gameObject.SetActive(false);
+				if (nextLevelButton.gameObject.activeSelf)
+				{
+					UIAnimationHelper.HidePanel(nextLevelButton.gameObject, animationType, animationDuration * 0.7f);
+				}
 			}
 			if ((defeatSound != null) && (audioSource != null))
 			{
 				audioSource.PlayOneShot(defeatSound);
 			}
-			background.color = loseBackgroundColor;
+			// Animate background color change
+			if (background != null)
+			{
+				background.DOColor(loseBackgroundColor, animationDuration);
+			}
 		}
 
 		/// <summary>
@@ -246,6 +284,20 @@ namespace TowerDefense.UI
 		/// </summary>
 		protected void OnDestroy()
 		{
+			// Kill all tweens khi destroy
+			if (endGameCanvas != null)
+			{
+				UIAnimationHelper.KillTweens(endGameCanvas.gameObject);
+			}
+			if (nextLevelButton != null)
+			{
+				UIAnimationHelper.KillTweens(nextLevelButton.gameObject);
+			}
+			if (background != null)
+			{
+				background.DOKill();
+			}
+			
 			SafelyUnsubscribe();
 			if (HUD.GameUI.instanceExists)
 			{

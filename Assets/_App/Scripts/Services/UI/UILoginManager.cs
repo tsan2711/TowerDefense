@@ -5,6 +5,7 @@ using TMPro;
 using System.Collections;
 using Services.Core;
 using Services.Managers;
+using DG.Tweening;
 
 namespace Services.UI
 {
@@ -48,6 +49,12 @@ namespace Services.UI
         [Tooltip("Nếu true, sẽ tự động đăng xuất session cũ khi khởi động để cho phép đăng nhập lại")]
         [SerializeField] private bool autoSignOutOnStart = false;
         
+        [Header("Animation Settings")]
+        [Tooltip("Thời gian animation khi chuyển đổi giữa các panel (giây)")]
+        [SerializeField] private float panelTransitionDuration = 0.3f;
+        [Tooltip("Loại animation cho panel switching (Fade, Scale, Slide)")]
+        [SerializeField] private UIAnimationHelper.AnimationType panelAnimationType = UIAnimationHelper.AnimationType.Fade;
+        
         [Header("Scene Navigation")]
         [Tooltip("Tên scene menu để chuyển đến sau khi đăng nhập thành công. Để trống nếu không muốn tự động chuyển scene.")]
         [SerializeField] private string menuSceneName = "MenuScene";
@@ -64,6 +71,12 @@ namespace Services.UI
             if (loginPanel != null)
             {
                 loginPanel.SetActive(true);
+                // Reset alpha nếu có CanvasGroup để đảm bảo animation hoạt động đúng
+                CanvasGroup loginCanvasGroup = loginPanel.GetComponent<CanvasGroup>();
+                if (loginCanvasGroup != null)
+                {
+                    loginCanvasGroup.alpha = 1f;
+                }
             }
 
             if (signUpPanel != null)
@@ -142,10 +155,10 @@ namespace Services.UI
                 yield return new WaitForSeconds(0.1f);
                 elapsed += 0.1f;
                 
-                // Update status mỗi 2 giây (thay vì logic phức tạp trước đó)
+                // Log progress mỗi 2 giây (không show popup)
                 if (elapsed - lastStatusUpdate >= 2f)
                 {
-                    SetStatus($"Đang khởi tạo authentication service... ({Mathf.FloorToInt(elapsed)}s)", false);
+                    Debug.Log($"[UILoginManager] Đang khởi tạo authentication service... ({Mathf.FloorToInt(elapsed)}s)");
                     lastStatusUpdate = elapsed;
                 }
             }
@@ -153,7 +166,6 @@ namespace Services.UI
             if (!authService.IsInitialized)
             {
                 Debug.LogWarning("[UILoginManager] Auth service is registered but not initialized yet after timeout.");
-                SetStatus("Đang khởi tạo authentication service... (có thể mất thêm thời gian)", false);
                 Debug.Log("[UILoginManager] UI đã được setup, sẽ tự động update khi service ready qua OnAuthStateChanged event.");
             }
             else
@@ -162,7 +174,7 @@ namespace Services.UI
                 if (authService.IsAuthenticated && autoSignOutOnStart)
                 {
                     Debug.Log("[UILoginManager] User đã authenticated từ session cũ, đang tự động đăng xuất...");
-                    SetStatus("Đang đăng xuất session cũ...", false);
+                    // Không hiển thị message, chỉ tự động đăng xuất
                     // Start async sign out in a coroutine-friendly way
                     StartCoroutine(SignOutAndUpdateUI());
                 }
@@ -174,14 +186,14 @@ namespace Services.UI
                         UpdateUI();
                         if (!authService.IsAuthenticated)
                         {
-                            SetStatus("Sẵn sàng đăng nhập", false);
+                            // Không hiển thị popup, chỉ log
+                            Debug.Log("[UILoginManager] ✅ Service đã initialized, sẵn sàng đăng nhập");
                             // Force enable buttons để đảm bảo chúng được enable
                             ForceEnableLoginButtons();
                         }
                         else
                         {
-                            // User đã authenticated, hiển thị thông tin và hướng dẫn đăng xuất
-                            SetStatus("Đã đăng nhập từ session trước. Nhấn 'Đăng xuất' để đăng nhập lại.", false);
+                            // User đã authenticated, chỉ log không show popup
                             Debug.Log("[UILoginManager] User đã authenticated từ session cũ. Buttons login/signup bị disable. User có thể đăng xuất để đăng nhập lại.");
                         }
                     }
@@ -238,7 +250,7 @@ namespace Services.UI
                 if (!authService.IsAuthenticated)
                 {
                     ForceEnableLoginButtons();
-                    SetStatus("Sẵn sàng đăng nhập", false);
+                    // Chỉ log không show popup
                     Debug.Log("[UILoginManager] ✅ Buttons đã được enable sau khi auto sign out");
                 }
                 else
@@ -418,7 +430,6 @@ namespace Services.UI
                 return;
             }
 
-            SetStatus("Đang đăng nhập với Google...", false);
             SetButtonsInteractable(false);
 
             try
@@ -427,7 +438,7 @@ namespace Services.UI
 
                 if (result.Success)
                 {
-                    SetStatus("Đăng nhập thành công!", false);
+                    // Không hiển thị message thành công vì sẽ chuyển scene ngay
                     UpdateUserInfo(result.User);
                     
                     // Chuyển đến scene menu sau khi đăng nhập thành công
@@ -466,7 +477,6 @@ namespace Services.UI
             string email = ConvertUsernameToEmail(username);
             string password = loginPasswordInputField.text;
 
-            SetStatus("Đang đăng nhập...", false);
             SetButtonsInteractable(false);
 
             try
@@ -475,7 +485,7 @@ namespace Services.UI
 
                 if (result.Success)
                 {
-                    SetStatus("Đăng nhập thành công!", false);
+                    // Không hiển thị message thành công vì sẽ chuyển scene ngay
                     UpdateUserInfo(result.User);
                     ClearPasswordField();
                     
@@ -515,7 +525,6 @@ namespace Services.UI
             string email = ConvertUsernameToEmail(username);
             string password = signUpPasswordInputField.text;
 
-            SetStatus("Đang tạo tài khoản...", false);
             SetButtonsInteractable(false);
 
             try
@@ -524,7 +533,7 @@ namespace Services.UI
 
                 if (result.Success)
                 {
-                    SetStatus("Tạo tài khoản thành công! Đã tự động đăng nhập.", false);
+                    // Không hiển thị message thành công vì sẽ chuyển scene ngay
                     UpdateUserInfo(result.User);
                     ClearSignUpFields();
                     
@@ -554,27 +563,30 @@ namespace Services.UI
                 return;
             }
 
-            SetStatus("Đang đăng xuất...", false);
             SetButtonsInteractable(false);
 
             try
             {
                 await authService.SignOutAsync();
-                SetStatus("Đã đăng xuất thành công. Sẵn sàng đăng nhập lại.", false);
+                // Không hiển thị message thành công, chỉ update UI
                 UpdateUserInfo(null);
                 ClearPasswordField();
                 
                 // Force update UI to show login panel and enable buttons
                 UpdateUI();
                 
-                // Ensure login panel is visible
-                if (loginPanel != null)
+                // Ensure login panel is visible với animation
+                if (userInfoPanel != null && userInfoPanel.activeSelf)
                 {
-                    loginPanel.SetActive(true);
+                    UIAnimationHelper.HidePanel(userInfoPanel, panelAnimationType, panelTransitionDuration);
                 }
-                if (signUpPanel != null)
+                if (loginPanel != null && !loginPanel.activeSelf)
                 {
-                    signUpPanel.SetActive(false);
+                    UIAnimationHelper.ShowPanel(loginPanel, panelAnimationType, panelTransitionDuration);
+                }
+                if (signUpPanel != null && signUpPanel.activeSelf)
+                {
+                    UIAnimationHelper.HidePanel(signUpPanel, panelAnimationType, panelTransitionDuration);
                 }
                 
                 Debug.Log("[UILoginManager] ✅ Đăng xuất thành công. Login/signup buttons đã được enable.");
@@ -619,18 +631,17 @@ namespace Services.UI
                 }
             }
             
-            // Nếu service vừa mới initialized, thông báo ready
+            // Nếu service vừa mới initialized, chỉ log không show popup
             if (serviceInitialized)
             {
                 if (isAuthenticated)
                 {
-                    // User đã authenticated từ session trước
-                    SetStatus("Đã đăng nhập từ session trước. Nhấn 'Đăng xuất' để đăng nhập lại.", false);
+                    // User đã authenticated từ session trước - chỉ log
                     Debug.Log("[UILoginManager] ✅ Service đã initialized nhưng user đã authenticated. Buttons login/signup bị disable. User có thể đăng xuất để đăng nhập lại.");
                 }
                 else
                 {
-                    SetStatus("Sẵn sàng đăng nhập", false);
+                    // Chỉ log không show popup khi ready
                     Debug.Log("[UILoginManager] ✅ Service đã initialized, buttons đã được enable!");
                 }
             }
@@ -726,30 +737,30 @@ namespace Services.UI
                 signOutButton.interactable = isAuthenticated;
             }
 
-            // Update panel visibility
+            // Update panel visibility với animation mượt mà
             if (isAuthenticated)
             {
                 // Hide both login and signup panels when authenticated
-                if (loginPanel != null)
+                if (loginPanel != null && loginPanel.activeSelf)
                 {
-                    loginPanel.SetActive(false);
+                    UIAnimationHelper.HidePanel(loginPanel, panelAnimationType, panelTransitionDuration);
                 }
-                if (signUpPanel != null)
+                if (signUpPanel != null && signUpPanel.activeSelf)
                 {
-                    signUpPanel.SetActive(false);
+                    UIAnimationHelper.HidePanel(signUpPanel, panelAnimationType, panelTransitionDuration);
                 }
-                if (userInfoPanel != null)
+                if (userInfoPanel != null && !userInfoPanel.activeSelf)
                 {
-                    userInfoPanel.SetActive(true);
+                    UIAnimationHelper.ShowPanel(userInfoPanel, panelAnimationType, panelTransitionDuration);
                 }
             }
             else
             {
                 // Show appropriate panel based on current state
                 // (Don't change active panel, just ensure userInfoPanel is hidden)
-                if (userInfoPanel != null)
+                if (userInfoPanel != null && userInfoPanel.activeSelf)
                 {
-                    userInfoPanel.SetActive(false);
+                    UIAnimationHelper.HidePanel(userInfoPanel, panelAnimationType, panelTransitionDuration);
                 }
             }
 
@@ -853,7 +864,8 @@ namespace Services.UI
             
             if (!authService.IsInitialized)
             {
-                SetStatus("Service đang khởi tạo. Vui lòng đợi...", false);
+                // Không hiển thị message "đang khởi tạo", chỉ log
+                Debug.Log("[UILoginManager] Service đang khởi tạo. Vui lòng đợi...");
                 return false;
             }
             
@@ -1026,63 +1038,69 @@ namespace Services.UI
         }
 
         /// <summary>
-        /// Switch to Sign Up panel
+        /// Switch to Sign Up panel với animation mượt mà
         /// </summary>
         public void SwitchToSignUpPanel()
         {
-            if (loginPanel != null)
-            {
-                loginPanel.SetActive(false);
-            }
-
-            if (signUpPanel != null)
-            {
-                signUpPanel.SetActive(true);
-            }
+            // Kill any existing animations
+            if (loginPanel != null) UIAnimationHelper.KillTweens(loginPanel);
+            if (signUpPanel != null) UIAnimationHelper.KillTweens(signUpPanel);
             
-            // Update button states
-            if (switchToSignUpButton != null)
-            {
-                switchToSignUpButton.interactable = false; // Currently on signup panel
-            }
-            
-            if (switchToLoginButton != null)
-            {
-                switchToLoginButton.interactable = true; // Can switch to login
-            }
+            // Switch panels với animation
+            UIAnimationHelper.SwitchPanels(
+                hidePanel: loginPanel,
+                showPanel: signUpPanel,
+                duration: panelTransitionDuration,
+                onComplete: () =>
+                {
+                    // Update button states
+                    if (switchToSignUpButton != null)
+                    {
+                        switchToSignUpButton.interactable = false; // Currently on signup panel
+                    }
+                    
+                    if (switchToLoginButton != null)
+                    {
+                        switchToLoginButton.interactable = true; // Can switch to login
+                    }
 
-            // Clear status when switching
-            ClearStatus();
+                    // Clear status when switching
+                    ClearStatus();
+                }
+            );
         }
 
         /// <summary>
-        /// Switch to Login panel
+        /// Switch to Login panel với animation mượt mà
         /// </summary>
         public void SwitchToLoginPanel()
         {
-            if (signUpPanel != null)
-            {
-                signUpPanel.SetActive(false);
-            }
-
-            if (loginPanel != null)
-            {
-                loginPanel.SetActive(true);
-            }
+            // Kill any existing animations
+            if (loginPanel != null) UIAnimationHelper.KillTweens(loginPanel);
+            if (signUpPanel != null) UIAnimationHelper.KillTweens(signUpPanel);
             
-            // Update button states
-            if (switchToLoginButton != null)
-            {
-                switchToLoginButton.interactable = false; // Currently on login panel
-            }
-            
-            if (switchToSignUpButton != null)
-            {
-                switchToSignUpButton.interactable = true; // Can switch to signup
-            }
+            // Switch panels với animation
+            UIAnimationHelper.SwitchPanels(
+                hidePanel: signUpPanel,
+                showPanel: loginPanel,
+                duration: panelTransitionDuration,
+                onComplete: () =>
+                {
+                    // Update button states
+                    if (switchToLoginButton != null)
+                    {
+                        switchToLoginButton.interactable = false; // Currently on login panel
+                    }
+                    
+                    if (switchToSignUpButton != null)
+                    {
+                        switchToSignUpButton.interactable = true; // Can switch to signup
+                    }
 
-            // Clear status when switching
-            ClearStatus();
+                    // Clear status when switching
+                    ClearStatus();
+                }
+            );
         }
 
         /// <summary>
@@ -1197,6 +1215,11 @@ namespace Services.UI
 
         private void OnDestroy()
         {
+            // Kill all tweens khi destroy
+            if (loginPanel != null) UIAnimationHelper.KillTweens(loginPanel);
+            if (signUpPanel != null) UIAnimationHelper.KillTweens(signUpPanel);
+            if (userInfoPanel != null) UIAnimationHelper.KillTweens(userInfoPanel);
+            
             if (authService != null)
             {
                 authService.OnAuthStateChanged -= OnAuthStateChanged;

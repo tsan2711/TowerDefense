@@ -3,6 +3,8 @@ using TowerDefense.Game;
 using TowerDefense.UI.HUD;
 using UnityEngine;
 using UnityEngine.UI;
+using DG.Tweening;
+using Services.UI;
 using GameUIState = TowerDefense.UI.HUD.GameUI.State;
 
 namespace TowerDefense.UI
@@ -49,6 +51,12 @@ namespace TowerDefense.UI
 		/// Color to change the top panel to highlight confirmation button
 		/// </summary>
 		public Color topPanelDisabledColor = new Color(1, 1, 1, 1);
+		
+		[Header("Animation Settings")]
+		[Tooltip("Thời gian animation khi show/hide pause menu (giây)")]
+		public float animationDuration = 0.3f;
+		[Tooltip("Loại animation cho pause menu")]
+		public UIAnimationHelper.AnimationType animationType = UIAnimationHelper.AnimationType.Fade;
 
 		/// <summary>
 		/// State of pause menu
@@ -61,11 +69,15 @@ namespace TowerDefense.UI
 		bool m_MenuChangedThisFrame;
 
 		/// <summary>
-		/// Open the pause menu
+		/// Open the pause menu với animation mượt mà
 		/// </summary>
 		public void OpenPauseMenu()
 		{
-			SetPauseMenuCanvas(true);
+			// Enable canvas trước
+			if (pauseMenuCanvas != null)
+			{
+				pauseMenuCanvas.enabled = true;
+			}
 
 			LevelItem level = GameManager.instance.GetLevelForCurrentScene();
 			if (level == null)
@@ -79,6 +91,12 @@ namespace TowerDefense.UI
 			if (descriptionText != null)
 			{
 				descriptionText.text = level.description;
+			}
+
+			// Show với animation
+			if (pauseMenuCanvas != null)
+			{
+				UIAnimationHelper.ShowPanel(pauseMenuCanvas.gameObject, animationType, animationDuration);
 			}
 
 			m_State = State.Open;
@@ -103,41 +121,101 @@ namespace TowerDefense.UI
 		}
 
 		/// <summary>
-		/// Level select button pressed, display/hide confirmation button
+		/// Level select button pressed, display/hide confirmation button với animation
 		/// </summary>
 		public void LevelSelectPressed()
 		{
 			bool open = m_State == State.Open;
 			restartButton.interactable = !open;
-			topPanel.color = open ? topPanelDisabledColor : Color.white;
-			levelSelectConfirmButton.gameObject.SetActive(open);
+			
+			// Animate top panel color change
+			if (topPanel != null)
+			{
+				topPanel.DOColor(open ? topPanelDisabledColor : Color.white, 0.2f);
+			}
+			
+			// Show/hide confirmation button với animation
+			if (levelSelectConfirmButton != null)
+			{
+				if (open)
+				{
+					UIAnimationHelper.ShowPanel(levelSelectConfirmButton.gameObject, animationType, animationDuration * 0.7f);
+				}
+				else
+				{
+					UIAnimationHelper.HidePanel(levelSelectConfirmButton.gameObject, animationType, animationDuration * 0.7f);
+				}
+			}
+			
 			m_State = open ? State.LevelSelectPressed : State.Open;
 		}
 
 		/// <summary>
-		/// Restart button pressed, display/hide confirmation button
+		/// Restart button pressed, display/hide confirmation button với animation
 		/// </summary>
 		public void RestartPressed()
 		{
 			bool open = m_State == State.Open;
 			levelSelectButton.interactable = !open;
-			topPanel.color = open ? topPanelDisabledColor : Color.white;
-			restartConfirmButton.gameObject.SetActive(open);
+			
+			// Animate top panel color change
+			if (topPanel != null)
+			{
+				topPanel.DOColor(open ? topPanelDisabledColor : Color.white, 0.2f);
+			}
+			
+			// Show/hide confirmation button với animation
+			if (restartConfirmButton != null)
+			{
+				if (open)
+				{
+					UIAnimationHelper.ShowPanel(restartConfirmButton.gameObject, animationType, animationDuration * 0.7f);
+				}
+				else
+				{
+					UIAnimationHelper.HidePanel(restartConfirmButton.gameObject, animationType, animationDuration * 0.7f);
+				}
+			}
+			
 			m_State = open ? State.RestartPressed : State.Open;
 		}
 
 		/// <summary>
-		/// Close the pause menu
+		/// Close the pause menu với animation mượt mà
 		/// </summary>
 		public void ClosePauseMenu()
 		{
-			SetPauseMenuCanvas(false);
+			// Hide với animation
+			if (pauseMenuCanvas != null)
+			{
+				UIAnimationHelper.HidePanel(pauseMenuCanvas.gameObject, animationType, animationDuration, () =>
+				{
+					SetPauseMenuCanvas(false);
+				});
+			}
+			else
+			{
+				SetPauseMenuCanvas(false);
+			}
 
-			levelSelectConfirmButton.gameObject.SetActive(false);
-			restartConfirmButton.gameObject.SetActive(false);
+			// Hide confirmation buttons với animation
+			if (levelSelectConfirmButton != null && levelSelectConfirmButton.gameObject.activeSelf)
+			{
+				UIAnimationHelper.HidePanel(levelSelectConfirmButton.gameObject, animationType, animationDuration * 0.7f);
+			}
+			if (restartConfirmButton != null && restartConfirmButton.gameObject.activeSelf)
+			{
+				UIAnimationHelper.HidePanel(restartConfirmButton.gameObject, animationType, animationDuration * 0.7f);
+			}
+			
 			levelSelectButton.interactable = true;
 			restartButton.interactable = true;
-			topPanel.color = Color.white;
+			
+			// Animate top panel color back
+			if (topPanel != null)
+			{
+				topPanel.DOColor(Color.white, 0.2f);
+			}
 
 			m_State = State.Closed;
 		}
@@ -176,6 +254,29 @@ namespace TowerDefense.UI
 			if (UnityEngine.Input.GetKeyDown(KeyCode.Escape) && GameUI.instance.state == GameUIState.Paused)
 			{
 				Unpause();
+			}
+		}
+		
+		/// <summary>
+		/// Kill all tweens khi destroy
+		/// </summary>
+		protected virtual void OnDestroy()
+		{
+			if (pauseMenuCanvas != null)
+			{
+				UIAnimationHelper.KillTweens(pauseMenuCanvas.gameObject);
+			}
+			if (levelSelectConfirmButton != null)
+			{
+				UIAnimationHelper.KillTweens(levelSelectConfirmButton.gameObject);
+			}
+			if (restartConfirmButton != null)
+			{
+				UIAnimationHelper.KillTweens(restartConfirmButton.gameObject);
+			}
+			if (topPanel != null)
+			{
+				topPanel.DOKill();
 			}
 		}
 

@@ -51,8 +51,14 @@ namespace Services.Managers
             // Initialize Auth Service
             InitializeAuthService();
 
-            // Initialize Firestore Service
-            InitializeFirestoreService();
+            // Initialize Microservices - following microservice architecture pattern
+            InitializeAgentConfigurationService();
+            InitializeTowerDataService();
+            InitializeLevelManagementService();
+            InitializeUserDataService();
+
+            // Legacy Firestore Service (deprecated - use individual microservices instead)
+            // InitializeFirestoreService(); // Commented out to use microservices
 
             // Add other services here as you scale
             // InitializeAnalyticsService();
@@ -138,6 +144,54 @@ namespace Services.Managers
             
             // Register with ServiceLocator
             ServiceLocator.Instance.RegisterService<IFirestoreService>(firestoreService);
+        }
+
+        private void InitializeAgentConfigurationService()
+        {
+            if (ServiceLocator.Instance.IsServiceRegistered<IAgentConfigurationService>())
+            {
+                return;
+            }
+
+            GameObject serviceGO = new GameObject("AgentConfigurationService");
+            Firestore.AgentConfigurationService service = serviceGO.AddComponent<Firestore.AgentConfigurationService>();
+            ServiceLocator.Instance.RegisterService<IAgentConfigurationService>(service);
+        }
+
+        private void InitializeTowerDataService()
+        {
+            if (ServiceLocator.Instance.IsServiceRegistered<ITowerDataService>())
+            {
+                return;
+            }
+
+            GameObject serviceGO = new GameObject("TowerDataService");
+            Firestore.TowerDataService service = serviceGO.AddComponent<Firestore.TowerDataService>();
+            ServiceLocator.Instance.RegisterService<ITowerDataService>(service);
+        }
+
+        private void InitializeLevelManagementService()
+        {
+            if (ServiceLocator.Instance.IsServiceRegistered<ILevelManagementService>())
+            {
+                return;
+            }
+
+            GameObject serviceGO = new GameObject("LevelManagementService");
+            Firestore.LevelManagementService service = serviceGO.AddComponent<Firestore.LevelManagementService>();
+            ServiceLocator.Instance.RegisterService<ILevelManagementService>(service);
+        }
+
+        private void InitializeUserDataService()
+        {
+            if (ServiceLocator.Instance.IsServiceRegistered<IUserDataService>())
+            {
+                return;
+            }
+
+            GameObject serviceGO = new GameObject("UserDataService");
+            Firestore.UserDataService service = serviceGO.AddComponent<Firestore.UserDataService>();
+            ServiceLocator.Instance.RegisterService<IUserDataService>(service);
         }
 
         /// <summary>

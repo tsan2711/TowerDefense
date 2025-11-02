@@ -1,4 +1,6 @@
 ﻿using UnityEngine;
+using DG.Tweening;
+using Services.UI;
 
 namespace Core.UI
 {
@@ -12,33 +14,66 @@ namespace Core.UI
 		/// </summary>
 		public Canvas canvas;
 		
+		[Header("Animation Settings")]
+		[Tooltip("Thời gian animation khi show/hide page (giây)")]
+		public float animationDuration = 0.3f;
+		[Tooltip("Loại animation cho page transition")]
+		public UIAnimationHelper.AnimationType animationType = UIAnimationHelper.AnimationType.Fade;
+		
 		/// <summary>
-		/// Deactivates this page
+		/// Deactivates this page với animation mượt mà
 		/// </summary>
 		public virtual void Hide()
 		{
-			if (canvas != null)
+			GameObject targetObject = canvas != null ? canvas.gameObject : gameObject;
+			if (targetObject != null)
 			{
-				canvas.enabled = false;
-			}
-			else
-			{
-				gameObject.SetActive(false);
+				UIAnimationHelper.HidePanel(targetObject, animationType, animationDuration, () =>
+				{
+					if (canvas != null)
+					{
+						canvas.enabled = false;
+					}
+					else
+					{
+						targetObject.SetActive(false);
+					}
+				});
 			}
 		}
 
 		/// <summary>
-		/// Activates this page
+		/// Activates this page với animation mượt mà
 		/// </summary>
 		public virtual void Show()
 		{
-			if (canvas != null)
+			GameObject targetObject = canvas != null ? canvas.gameObject : gameObject;
+			if (targetObject != null)
 			{
-				canvas.enabled = true;
+				// Enable object/canvas trước
+				if (canvas != null)
+				{
+					canvas.enabled = true;
+				}
+				else
+				{
+					targetObject.SetActive(true);
+				}
+				
+				// Show với animation
+				UIAnimationHelper.ShowPanel(targetObject, animationType, animationDuration);
 			}
-			else
+		}
+		
+		/// <summary>
+		/// Kill all tweens khi destroy
+		/// </summary>
+		protected virtual void OnDestroy()
+		{
+			GameObject targetObject = canvas != null ? canvas.gameObject : gameObject;
+			if (targetObject != null)
 			{
-				gameObject.SetActive(true);
+				UIAnimationHelper.KillTweens(targetObject);
 			}
 		}
 	}
