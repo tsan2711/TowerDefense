@@ -12,4 +12,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f7501bbf02d6a475e897f4d07ff3fdc1, type: 3}
   m_Name: LevelList
   m_EditorClassIdentifier: Assembly-CSharp::Core.Game.LevelList
-  levels: []
+  levels:
+  - id: level_1
+    name: Tutorial
+    description: Learn the basics of tower defense
+    sceneName: Tutorial
+  - id: level_2
+    name: First Challenge
+    description: Put your skills to the test
+    sceneName: Level1
+  - id: level_3
+    name: Advanced Tactics
+    description: Master the art of defense
+    sceneName: Level2

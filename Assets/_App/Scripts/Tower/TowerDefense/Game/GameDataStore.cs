@@ -15,6 +15,11 @@ namespace TowerDefense.Game
 		public List<LevelSaveData> completedLevels = new List<LevelSaveData>();
 
 		/// <summary>
+		/// The maximum level that the player has unlocked (0-based index)
+		/// </summary>
+		public int maxLevel = 0;
+
+		/// <summary>
 		/// Outputs to debug
 		/// </summary>
 		public override void PreSave()
@@ -78,6 +83,18 @@ namespace TowerDefense.Game
 				}
 			}
 			return 0;
+		}
+
+		/// <summary>
+		/// Updates the maximum level unlocked by the player
+		/// </summary>
+		/// <param name="levelIndex">The index of the completed level (0-based)</param>
+		public void UpdateMaxLevel(int levelIndex)
+		{
+			// maxLevel is the highest level index that player has completed
+			// When completing level N (index N), player unlocks level N+1
+			// So if player completes level at index N, maxLevel should be at least N+1
+			maxLevel = Mathf.Max(maxLevel, levelIndex + 1);
 		}
 	}
 }

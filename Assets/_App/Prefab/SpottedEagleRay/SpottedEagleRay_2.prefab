@@ -19807,7 +19807,7 @@ SkinnedMeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 506dfb43f6869a944bff364b8567b958, type: 2}
+  - {fileID: 2100000, guid: 89f9e8911f1144496ad21c7bc5f8595a, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -34399,7 +34399,7 @@ MonoBehaviour:
     type: 3}
   buildEffectPrefab: {fileID: 1395313577031670, guid: c559c1920b5d04e6d83aa4464fba5c68,
     type: 3}
-  levelData: {fileID: 11400000, guid: a540aacdbd5eb44db8902f55997a89f4, type: 2}
+  levelData: {fileID: 11400000, guid: 0389fcc07dc9b4bdc85c14e417063ef1, type: 2}
 --- !u!1 &7921857892938842062
 GameObject:
   m_ObjectHideFlags: 0

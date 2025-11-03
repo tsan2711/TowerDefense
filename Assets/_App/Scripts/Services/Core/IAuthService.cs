@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace Services.Core
@@ -72,8 +73,22 @@ namespace Services.Core
         public string PhotoURL { get; set; }
         public string ProviderId { get; set; }
 
+        /// <summary>
+        /// Level progress data (level stars and maxLevel)
+        /// This property can be loaded separately from Firestore
+        /// </summary>
+        public Services.Data.UserLevelProgress LevelProgress { get; set; }
+
+        /// <summary>
+        /// Agent configuration data loaded from Firestore
+        /// This property stores cached agent configurations for the user
+        /// </summary>
+        public List<Services.Data.AgentConfigurationData> AgentConfigurations { get; set; }
+
         public UserInfo()
         {
+            LevelProgress = new Services.Data.UserLevelProgress();
+            AgentConfigurations = new List<Services.Data.AgentConfigurationData>();
         }
 
         public UserInfo(string uid, string email, string displayName, string photoURL, string providerId)
@@ -83,6 +98,8 @@ namespace Services.Core
             DisplayName = displayName;
             PhotoURL = photoURL;
             ProviderId = providerId;
+            LevelProgress = new Services.Data.UserLevelProgress();
+            AgentConfigurations = new List<Services.Data.AgentConfigurationData>();
         }
     }
 

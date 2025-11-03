@@ -39,7 +39,9 @@ namespace UnityEngine.PostProcessing
         {
             get
             {
-                return model.enabled
+                return model != null
+                       && context != null
+                       && model.enabled
                        && !context.interrupted;
             }
         }
@@ -382,6 +384,9 @@ namespace UnityEngine.PostProcessing
 
         public override void Prepare(Material uberMaterial)
         {
+            if (model == null || context == null)
+                return;
+
             if (model.isDirty || !IsLogLutValid(model.bakedLut))
             {
                 GenerateLut();
@@ -404,6 +409,9 @@ namespace UnityEngine.PostProcessing
 
         public void OnGUI()
         {
+            if (model == null || context == null || model.bakedLut == null)
+                return;
+
             var bakedLut = model.bakedLut;
             var rect = new Rect(context.viewport.x * Screen.width + 8f, 8f, bakedLut.width, bakedLut.height);
             GUI.DrawTexture(rect, bakedLut);
@@ -412,9 +420,12 @@ namespace UnityEngine.PostProcessing
         public override void OnDisable()
         {
             GraphicsUtils.Destroy(m_GradingCurves);
-            GraphicsUtils.Destroy(model.bakedLut);
+            if (model != null)
+            {
+                GraphicsUtils.Destroy(model.bakedLut);
+                model.bakedLut = null;
+            }
             m_GradingCurves = null;
-            model.bakedLut = null;
         }
     }
 }
