@@ -13,6 +13,6 @@ MonoBehaviour:
   m_Name: HoverBoss
   m_EditorClassIdentifier: Assembly-CSharp::TowerDefense.Agents.Data.AgentConfiguration
   agentType: 0
-  agentName: Hover Boss
-  agentDescription: A powerful boss enemy with high health and damage
+  agentName: Placeholder Agent
+  agentDescription: Initial placeholder for AgentConfigurations collection
   agentPrefab: {fileID: 0}

@@ -46,8 +46,8 @@ namespace Services.UI
 
         [Header("Settings")]
         [SerializeField] private bool autoUpdateUI = true;
-        [Tooltip("Nếu true, sẽ tự động đăng xuất session cũ khi khởi động để cho phép đăng nhập lại")]
-        [SerializeField] private bool autoSignOutOnStart = false;
+        [Tooltip("Nếu true, sẽ tự động đăng xuất session cũ khi khởi động để cho phép đăng nhập lại. Đặt true để tắt auto login và yêu cầu đăng nhập mỗi lần vào game.")]
+        [SerializeField] private bool autoSignOutOnStart = true;
         
         [Header("Animation Settings")]
         [Tooltip("Thời gian animation khi chuyển đổi giữa các panel (giây)")]
@@ -64,6 +64,7 @@ namespace Services.UI
         private IAuthService authService;
         private bool isServiceReady = false;
         private bool hasCheckedButtonsAfterInit = false; // Flag để chỉ check buttons một lần sau khi init
+        private bool hasAutoSignedOut = false; // Flag để tránh đăng xuất auto login nhiều lần
 
         private void Awake()
         {
@@ -171,11 +172,12 @@ namespace Services.UI
             else
             {
                 // Check if user is already authenticated (from previous session)
-                if (authService.IsAuthenticated && autoSignOutOnStart)
+                // Luôn đăng xuất session cũ để yêu cầu đăng nhập mỗi lần vào game
+                if (authService.IsAuthenticated && !hasAutoSignedOut)
                 {
-                    Debug.Log("[UILoginManager] User đã authenticated từ session cũ, đang tự động đăng xuất...");
-                    // Không hiển thị message, chỉ tự động đăng xuất
-                    // Start async sign out in a coroutine-friendly way
+                    Debug.Log("[UILoginManager] User đã authenticated từ session cũ, đang tự động đăng xuất để yêu cầu đăng nhập lại...");
+                    hasAutoSignedOut = true; // Đánh dấu đã đăng xuất auto login
+                    // Tự động đăng xuất session cũ
                     StartCoroutine(SignOutAndUpdateUI());
                 }
                 else
@@ -184,18 +186,10 @@ namespace Services.UI
                     if (autoUpdateUI)
                     {
                         UpdateUI();
-                        if (!authService.IsAuthenticated)
-                        {
-                            // Không hiển thị popup, chỉ log
-                            Debug.Log("[UILoginManager] ✅ Service đã initialized, sẵn sàng đăng nhập");
-                            // Force enable buttons để đảm bảo chúng được enable
-                            ForceEnableLoginButtons();
-                        }
-                        else
-                        {
-                            // User đã authenticated, chỉ log không show popup
-                            Debug.Log("[UILoginManager] User đã authenticated từ session cũ. Buttons login/signup bị disable. User có thể đăng xuất để đăng nhập lại.");
-                        }
+                        // Không hiển thị popup, chỉ log
+                        Debug.Log("[UILoginManager] ✅ Service đã initialized, sẵn sàng đăng nhập");
+                        // Force enable buttons để đảm bảo chúng được enable
+                        ForceEnableLoginButtons();
                     }
                 }
             }
@@ -607,6 +601,17 @@ namespace Services.UI
             bool serviceInitialized = authService?.IsInitialized ?? false;
             Debug.Log($"[UILoginManager] Auth state changed: {isAuthenticated}, Service Initialized: {serviceInitialized}");
             
+            // Nếu phát hiện user đã authenticated từ session cũ (auto login), đăng xuất ngay
+            // Đảm bảo user phải đăng nhập mỗi lần vào game
+            // Chỉ đăng xuất một lần để tránh loop
+            if (serviceInitialized && isAuthenticated && !hasCheckedButtonsAfterInit && !hasAutoSignedOut)
+            {
+                Debug.Log("[UILoginManager] ⚠️ Phát hiện auto login từ session cũ. Đang đăng xuất để yêu cầu đăng nhập lại...");
+                hasAutoSignedOut = true; // Đánh dấu đã đăng xuất auto login
+                StartCoroutine(SignOutAndUpdateUI());
+                return; // Không update UI cho đến khi đăng xuất xong
+            }
+            
             // Update UI when auth state changes (đặc biệt quan trọng khi service vừa initialized)
             if (autoUpdateUI)
             {
@@ -636,8 +641,8 @@ namespace Services.UI
             {
                 if (isAuthenticated)
                 {
-                    // User đã authenticated từ session trước - chỉ log
-                    Debug.Log("[UILoginManager] ✅ Service đã initialized nhưng user đã authenticated. Buttons login/signup bị disable. User có thể đăng xuất để đăng nhập lại.");
+                    // User đã authenticated từ session trước - đã được xử lý ở trên
+                    Debug.Log("[UILoginManager] User đã authenticated, nhưng sẽ được đăng xuất để yêu cầu đăng nhập lại.");
                 }
                 else
                 {
@@ -777,9 +782,24 @@ namespace Services.UI
 
         private void SetStatus(string message, bool isError = false)
         {
+            // Luôn cố gắng hiển thị message panel
             if (MessagePanel.IsReady())
             {
                 MessagePanel.instance.ShowMessage(message, isError);
+            }
+            else
+            {
+                // Nếu MessagePanel chưa ready, thử tìm trong scene
+                MessagePanel messagePanel = FindObjectOfType<MessagePanel>();
+                if (messagePanel != null)
+                {
+                    messagePanel.ShowMessage(message, isError);
+                }
+                else
+                {
+                    // Nếu vẫn không tìm thấy, log warning nhưng vẫn log message
+                    Debug.LogWarning($"[UILoginManager] MessagePanel chưa được khởi tạo. Message: {message}");
+                }
             }
             Debug.Log($"[UILoginManager] {message}");
         }
@@ -1179,9 +1199,19 @@ namespace Services.UI
         /// </summary>
         public void ClearStatus()
         {
+            // Luôn cố gắng clear message panel
             if (MessagePanel.IsReady())
             {
                 MessagePanel.instance.ClearMessage();
+            }
+            else
+            {
+                // Nếu MessagePanel chưa ready, thử tìm trong scene
+                MessagePanel messagePanel = FindObjectOfType<MessagePanel>();
+                if (messagePanel != null)
+                {
+                    messagePanel.ClearMessage();
+                }
             }
         }
 
