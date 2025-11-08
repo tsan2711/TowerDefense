@@ -1,0 +1,16 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6e9d2c5f8b1a4e7c9f2e5d8c1b4f7a9e, type: 3}
+  m_Name: TowerInventory
+  m_EditorClassIdentifier: Assembly-CSharp::TowerDefense.Towers.Data.TowerInventory
+  selectedTowers: []
+  towerLibrary: {fileID: 11400000, guid: f9a88c696ebce45318e1ae33adc9cfbc, type: 2}

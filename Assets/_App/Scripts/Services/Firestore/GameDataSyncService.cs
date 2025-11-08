@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -290,6 +291,337 @@ namespace Services.Firestore
             TowerLibraryLoader.SetContainerInstance(container);
 
             Debug.Log($"[GameDataSyncService] ✅ Synced TowerLibraryContainer with {configs.Count} level library configs");
+        }
+
+        /// <summary>
+        /// Sync user inventory data vào TowerInventory ScriptableObject
+        /// Load TowerInventory từ Resources hoặc tạo mới nếu chưa có
+        /// </summary>
+        public static void SyncUserInventoryToScriptableObject(TowerInventoryData inventoryData)
+        {
+            if (inventoryData == null)
+            {
+                Debug.LogWarning("[GameDataSyncService] No inventory data to sync");
+                return;
+            }
+
+            TowerInventory towerInventory = null;
+            string assetPath = null;
+
+#if UNITY_EDITOR
+            // Trong Editor: Try load từ AssetDatabase trước
+            string[] assetPaths = new string[]
+            {
+                "Assets/Resources/TowerInventory.asset",
+                "Assets/Resources/PlayerTowerInventory.asset",
+                "Assets/Data/TowerInventory.asset",
+                "Assets/_App/Data/TowerInventory.asset"
+            };
+
+            foreach (string path in assetPaths)
+            {
+                towerInventory = AssetDatabase.LoadAssetAtPath<TowerInventory>(path);
+                if (towerInventory != null)
+                {
+                    assetPath = path;
+                    Debug.Log($"[GameDataSyncService] Found TowerInventory at: {assetPath}");
+                    break;
+                }
+            }
+#endif
+
+            // Nếu không tìm thấy trong Editor, thử load từ Resources
+            if (towerInventory == null)
+            {
+                towerInventory = Resources.Load<TowerInventory>("TowerInventory");
+                if (towerInventory == null)
+                {
+                    towerInventory = Resources.Load<TowerInventory>("PlayerTowerInventory");
+                }
+            }
+
+#if UNITY_EDITOR
+            // Nếu vẫn chưa có, tạo mới trong Resources folder
+            if (towerInventory == null)
+            {
+                Debug.Log("[GameDataSyncService] TowerInventory not found, creating new one in Resources folder...");
+                
+                // Tạo folder Resources nếu chưa có
+                string resourcesFolder = "Assets/Resources";
+                if (!AssetDatabase.IsValidFolder(resourcesFolder))
+                {
+                    AssetDatabase.CreateFolder("Assets", "Resources");
+                    Debug.Log("[GameDataSyncService] Created Resources folder");
+                }
+
+                // Tạo TowerInventory asset
+                assetPath = $"{resourcesFolder}/TowerInventory.asset";
+                towerInventory = ScriptableObject.CreateInstance<TowerInventory>();
+                
+                // Tìm và assign TowerLibrary reference
+                TowerLibrary towerLibrary = FindTowerLibrary();
+                if (towerLibrary != null)
+                {
+                    towerInventory.towerLibrary = towerLibrary;
+                    Debug.Log($"[GameDataSyncService] Assigned TowerLibrary reference to TowerInventory");
+                }
+                else
+                {
+                    Debug.LogWarning("[GameDataSyncService] TowerLibrary not found. Please assign it manually in Inspector.");
+                }
+
+                AssetDatabase.CreateAsset(towerInventory, assetPath);
+                AssetDatabase.SaveAssets();
+                AssetDatabase.Refresh();
+                
+                Debug.Log($"[GameDataSyncService] ✅ Created TowerInventory at: {assetPath}");
+            }
+#endif
+
+            if (towerInventory == null)
+            {
+                Debug.LogError("[GameDataSyncService] Failed to create or load TowerInventory ScriptableObject. " +
+                               "Please create one manually: Create > TowerDefense > Tower Inventory and place it in Resources folder.");
+                return;
+            }
+
+            // Đảm bảo ownedTowers không null trước khi sync
+            if (inventoryData.ownedTowers == null)
+            {
+                inventoryData.ownedTowers = new List<InventoryItemData>();
+                Debug.LogWarning("[GameDataSyncService] inventoryData.ownedTowers was null, initialized empty list");
+            }
+
+            // Sync data vào ScriptableObject
+            towerInventory.SyncWithInventoryData(inventoryData);
+            
+#if UNITY_EDITOR
+            EditorUtility.SetDirty(towerInventory);
+            AssetDatabase.SaveAssets();
+#endif
+
+            int selectedCount = inventoryData.GetSelectedCount();
+            int ownedCount = inventoryData.ownedTowers?.Count ?? 0;
+            Debug.Log($"[GameDataSyncService] ✅ Synced TowerInventory ScriptableObject: {selectedCount} towers selected, {ownedCount} towers owned");
+        }
+
+#if UNITY_EDITOR
+        /// <summary>
+        /// Tìm TowerLibrary từ Resources hoặc AssetDatabase
+        /// </summary>
+        private static TowerLibrary FindTowerLibrary()
+        {
+            // Thử load từ Resources
+            TowerLibrary library = Resources.Load<TowerLibrary>("TowerLibrary");
+            if (library != null)
+            {
+                return library;
+            }
+
+            // Thử tìm trong AssetDatabase
+            string[] guids = AssetDatabase.FindAssets("t:TowerLibrary");
+            if (guids.Length > 0)
+            {
+                string assetPath = AssetDatabase.GUIDToAssetPath(guids[0]);
+                library = AssetDatabase.LoadAssetAtPath<TowerLibrary>(assetPath);
+                if (library != null)
+                {
+                    Debug.Log($"[GameDataSyncService] Found TowerLibrary at: {assetPath}");
+                    return library;
+                }
+            }
+
+            // Thử load từ TowerLibraryContainer nếu có
+            TowerLibraryContainer container = TowerLibraryLoader.GetContainerInstance();
+            if (container != null)
+            {
+                List<TowerLibrary> allLibraries = container.GetAllLibraries();
+                if (allLibraries != null && allLibraries.Count > 0)
+                {
+                    // Lấy TowerLibrary đầu tiên từ container
+                    foreach (var levelLibrary in allLibraries)
+                    {
+                        if (levelLibrary != null)
+                        {
+                            Debug.Log("[GameDataSyncService] Using TowerLibrary from TowerLibraryContainer");
+                            return levelLibrary;
+                        }
+                    }
+                }
+            }
+
+            Debug.LogWarning("[GameDataSyncService] TowerLibrary not found. Please create one manually.");
+            return null;
+        }
+#endif
+
+        /// <summary>
+        /// Sync inventory config data vào InventoryConfigScriptableObject
+        /// Tự động tạo nếu chưa có
+        /// </summary>
+        public static void SyncInventoryConfigToScriptableObject(List<InventoryConfigData> configs)
+        {
+            if (configs == null || configs.Count == 0)
+            {
+                Debug.LogWarning("[GameDataSyncService] No inventory config data to sync");
+                return;
+            }
+
+#if UNITY_EDITOR
+            // Tạo folder Resources nếu chưa có
+            string resourcesFolder = "Assets/Resources";
+            if (!AssetDatabase.IsValidFolder(resourcesFolder))
+            {
+                AssetDatabase.CreateFolder("Assets", "Resources");
+            }
+
+            string assetPath = $"{resourcesFolder}/InventoryConfig.asset";
+            InventoryConfigScriptableObject configSO = AssetDatabase.LoadAssetAtPath<InventoryConfigScriptableObject>(assetPath);
+
+            bool isNew = configSO == null;
+            if (configSO == null)
+            {
+                configSO = ScriptableObject.CreateInstance<InventoryConfigScriptableObject>();
+                AssetDatabase.CreateAsset(configSO, assetPath);
+                Debug.Log($"[GameDataSyncService] Created InventoryConfigScriptableObject at: {assetPath}");
+            }
+
+            // Sync configs
+            configSO.SyncConfigs(configs);
+
+            EditorUtility.SetDirty(configSO);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
+            Debug.Log($"[GameDataSyncService] ✅ Synced InventoryConfigScriptableObject with {configs.Count} configs ({(isNew ? "Created" : "Updated")})");
+#else
+            // Runtime: Load từ Resources
+            InventoryConfigScriptableObject configSO = Resources.Load<InventoryConfigScriptableObject>("InventoryConfig");
+            if (configSO != null)
+            {
+                configSO.SyncConfigs(configs);
+                Debug.Log($"[GameDataSyncService] ✅ Synced InventoryConfigScriptableObject with {configs.Count} configs (Runtime)");
+            }
+            else
+            {
+                Debug.LogWarning("[GameDataSyncService] InventoryConfigScriptableObject not found in Resources");
+            }
+#endif
+        }
+
+        /// <summary>
+        /// Sync user inventory data vào UserInventoryScriptableObject
+        /// Tự động tạo nếu chưa có (chỉ trong Editor/Play mode)
+        /// </summary>
+        public static void SyncUserInventoryDataToScriptableObject(TowerInventoryData inventoryData)
+        {
+            Debug.Log("[GameDataSyncService] SyncUserInventoryDataToScriptableObject called");
+            
+            if (inventoryData == null)
+            {
+                Debug.LogWarning("[GameDataSyncService] No inventory data to sync - inventoryData is null");
+                return;
+            }
+
+            Debug.Log($"[GameDataSyncService] Syncing inventory for user: {inventoryData.userId}, ownedTowers: {inventoryData.ownedTowers?.Count ?? 0}");
+
+            UserInventoryScriptableObject userInventorySO = null;
+            bool isNew = false;
+
+#if UNITY_EDITOR
+            try
+            {
+                // Editor/Play mode: Tự động tạo ScriptableObject nếu chưa có
+                string resourcesFolder = "Assets/Resources";
+                if (!AssetDatabase.IsValidFolder(resourcesFolder))
+                {
+                    AssetDatabase.CreateFolder("Assets", "Resources");
+                    Debug.Log("[GameDataSyncService] Created Resources folder");
+                }
+
+                string assetPath = $"{resourcesFolder}/UserInventory.asset";
+                Debug.Log($"[GameDataSyncService] Looking for UserInventoryScriptableObject at: {assetPath}");
+                
+                userInventorySO = AssetDatabase.LoadAssetAtPath<UserInventoryScriptableObject>(assetPath);
+
+                if (userInventorySO == null)
+                {
+                    // Tạo mới
+                    Debug.Log("[GameDataSyncService] UserInventoryScriptableObject not found, creating new one...");
+                    userInventorySO = ScriptableObject.CreateInstance<UserInventoryScriptableObject>();
+                    
+                    if (userInventorySO == null)
+                    {
+                        Debug.LogError("[GameDataSyncService] Failed to create UserInventoryScriptableObject instance!");
+                        return;
+                    }
+                    
+                    AssetDatabase.CreateAsset(userInventorySO, assetPath);
+                    AssetDatabase.SaveAssets();
+                    AssetDatabase.Refresh();
+                    isNew = true;
+                    Debug.Log($"[GameDataSyncService] ✅ Created UserInventoryScriptableObject at: {assetPath}");
+                }
+                else
+                {
+                    Debug.Log($"[GameDataSyncService] Found existing UserInventoryScriptableObject at: {assetPath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[GameDataSyncService] Error creating/loading UserInventoryScriptableObject in Editor: {ex.Message}");
+                Debug.LogError($"[GameDataSyncService] Stack trace: {ex.StackTrace}");
+                return;
+            }
+#else
+            // Runtime (built game): Chỉ load từ Resources
+            userInventorySO = Resources.Load<UserInventoryScriptableObject>("UserInventory");
+            if (userInventorySO == null)
+            {
+                Debug.LogWarning("[GameDataSyncService] UserInventoryScriptableObject not found in Resources. " +
+                               "In built games, ScriptableObjects must be pre-generated. " +
+                               "Creating temporary instance in memory...");
+                // Tạo temporary instance trong memory (không persist)
+                userInventorySO = ScriptableObject.CreateInstance<UserInventoryScriptableObject>();
+            }
+#endif
+
+            // Sync data vào ScriptableObject
+            if (userInventorySO != null)
+            {
+                try
+                {
+                    // Đảm bảo ownedTowers không null trước khi sync
+                    if (inventoryData.ownedTowers == null)
+                    {
+                        inventoryData.ownedTowers = new List<InventoryItemData>();
+                        Debug.LogWarning("[GameDataSyncService] inventoryData.ownedTowers was null, initialized empty list");
+                    }
+
+                    Debug.Log($"[GameDataSyncService] Calling SyncFromInventoryData...");
+                    userInventorySO.SyncFromInventoryData(inventoryData);
+
+                    int ownedCount = inventoryData.ownedTowers?.Count ?? 0;
+                    int selectedCount = inventoryData.GetSelectedCount();
+
+#if UNITY_EDITOR
+                    EditorUtility.SetDirty(userInventorySO);
+                    AssetDatabase.SaveAssets();
+                    Debug.Log($"[GameDataSyncService] ✅ Synced UserInventoryScriptableObject: {ownedCount} towers owned, {selectedCount} selected ({(isNew ? "Created" : "Updated")})");
+#else
+                    Debug.Log($"[GameDataSyncService] ✅ Synced UserInventoryScriptableObject (Runtime): {ownedCount} towers owned, {selectedCount} selected");
+#endif
+                }
+                catch (Exception syncEx)
+                {
+                    Debug.LogError($"[GameDataSyncService] Error syncing data to UserInventoryScriptableObject: {syncEx.Message}");
+                    Debug.LogError($"[GameDataSyncService] Stack trace: {syncEx.StackTrace}");
+                }
+            }
+            else
+            {
+                Debug.LogError("[GameDataSyncService] Failed to create or load UserInventoryScriptableObject - userInventorySO is null");
+            }
         }
     }
 }

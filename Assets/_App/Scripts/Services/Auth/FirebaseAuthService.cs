@@ -21,6 +21,7 @@ namespace Services.Auth
         private FirebaseAuth auth;
         private bool isInitialized = false;
         private UserInfo currentUserInfo;
+        private IInventoryService inventoryService; // Cache reference để subscribe events
 
         // Events
         public event Action<bool> OnAuthStateChanged;
@@ -372,8 +373,15 @@ namespace Services.Auth
                 auth.IdTokenChanged -= OnIdTokenChangedHandler;
             }
 
+            // Unsubscribe from inventory events
+            if (inventoryService != null)
+            {
+                inventoryService.OnInventoryLoaded -= OnInventoryLoaded;
+            }
+
             isInitialized = false;
             currentUserInfo = null;
+            inventoryService = null;
         }
 
         private void OnAuthStateChangedHandler(object sender, System.EventArgs eventArgs)
@@ -472,6 +480,16 @@ namespace Services.Auth
                 IAgentConfigurationService agentConfigService = ServiceLocator.Instance.GetService<IAgentConfigurationService>();
                 ITowerDataService towerDataService = ServiceLocator.Instance.GetService<ITowerDataService>();
                 ILevelManagementService levelManagementService = ServiceLocator.Instance.GetService<ILevelManagementService>();
+                inventoryService = ServiceLocator.Instance.GetService<IInventoryService>();
+                IInventoryConfigService inventoryConfigService = ServiceLocator.Instance.GetService<IInventoryConfigService>();
+                
+                // Subscribe to inventory events để tự động sync khi inventory thay đổi
+                // Unsubscribe trước để tránh duplicate, rồi subscribe lại
+                if (inventoryService != null)
+                {
+                    inventoryService.OnInventoryLoaded -= OnInventoryLoaded; // Unsubscribe trước (safe nếu chưa subscribe)
+                    inventoryService.OnInventoryLoaded += OnInventoryLoaded;
+                }
                 
                 // Save user data first (creates/updates user document in Firestore)
                 if (currentUserInfo != null && userDataService != null && userDataService.IsInitialized)
@@ -515,6 +533,12 @@ namespace Services.Auth
                     if (!initSuccess) allInitSuccess = false;
                 }
                 
+                if (inventoryConfigService != null && inventoryConfigService.IsInitialized)
+                {
+                    bool initSuccess = await inventoryConfigService.InitializeCollectionIfEmptyAsync();
+                    if (!initSuccess) allInitSuccess = false;
+                }
+                
                 if (allInitSuccess)
                 {
                     Debug.Log("[FirebaseAuthService] Collections check/initialization completed");
@@ -526,8 +550,54 @@ namespace Services.Auth
 
                 // ✅ Load configuration data từ backend (luôn load, không phụ thuộc vào initialization)
                 Debug.Log("[FirebaseAuthService] Loading configuration data from Firestore microservices...");
-                await LoadAllConfigurationDataAsync(agentConfigService, towerDataService, levelManagementService);
+                await LoadAllConfigurationDataAsync(agentConfigService, towerDataService, levelManagementService, inventoryConfigService);
                 Debug.Log("[FirebaseAuthService] Configuration data loaded successfully");
+                
+                // ✅ Load user inventory after configuration data is loaded
+                Debug.Log($"[FirebaseAuthService] Checking inventory service: currentUserInfo={currentUserInfo != null}, UID={currentUserInfo?.UID}, inventoryService={inventoryService != null}, IsInitialized={inventoryService?.IsInitialized}");
+                
+                if (currentUserInfo != null && !string.IsNullOrEmpty(currentUserInfo.UID) && inventoryService != null && inventoryService.IsInitialized)
+                {
+                    Debug.Log($"[FirebaseAuthService] Loading user inventory from Firestore for user: {currentUserInfo.UID}");
+                    await LoadUserInventoryAsync(inventoryService, currentUserInfo.UID);
+                    
+                    // Sync inventory vào ScriptableObjects sau khi load xong
+                    Services.Data.TowerInventoryData inventory = inventoryService?.GetCachedInventory();
+                    Debug.Log($"[FirebaseAuthService] Cached inventory check: inventory={inventory != null}");
+                    
+                    if (inventory != null)
+                    {
+                        // Đảm bảo ownedTowers không null
+                        if (inventory.ownedTowers == null)
+                        {
+                            inventory.ownedTowers = new List<Services.Data.InventoryItemData>();
+                            Debug.LogWarning("[FirebaseAuthService] inventory.ownedTowers was null, initialized empty list");
+                        }
+
+                        Debug.Log($"[FirebaseAuthService] Syncing inventory to ScriptableObjects... (ownedTowers: {inventory.ownedTowers?.Count ?? 0})");
+                        try
+                        {
+                            // Sync vào TowerInventory (selected towers cho gameplay)
+                            GameDataSyncService.SyncUserInventoryToScriptableObject(inventory);
+                            // Sync vào UserInventoryScriptableObject (all owned towers)
+                            GameDataSyncService.SyncUserInventoryDataToScriptableObject(inventory);
+                            Debug.Log("[FirebaseAuthService] ✅ Successfully synced inventory to ScriptableObjects");
+                        }
+                        catch (Exception syncEx)
+                        {
+                            Debug.LogError($"[FirebaseAuthService] Error syncing inventory to ScriptableObjects: {syncEx.Message}");
+                            Debug.LogError($"[FirebaseAuthService] Stack trace: {syncEx.StackTrace}");
+                        }
+                    }
+                    else
+                    {
+                        Debug.LogWarning("[FirebaseAuthService] Cached inventory is null, skipping sync. This might happen if inventory load failed.");
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning($"[FirebaseAuthService] Cannot load inventory - conditions not met: currentUserInfo={currentUserInfo != null}, UID empty={string.IsNullOrEmpty(currentUserInfo?.UID)}, inventoryService={inventoryService != null}, IsInitialized={inventoryService?.IsInitialized}");
+                }
 
                 // ✅ Initialize default stars again after level list is loaded (in case it wasn't available earlier)
                 if (currentUserInfo != null && currentUserInfo.LevelProgress != null && userDataService != null && userDataService.IsInitialized)
@@ -553,7 +623,8 @@ namespace Services.Auth
         private async Task LoadAllConfigurationDataAsync(
             IAgentConfigurationService agentConfigService,
             ITowerDataService towerDataService,
-            ILevelManagementService levelManagementService)
+            ILevelManagementService levelManagementService,
+            IInventoryConfigService inventoryConfigService)
         {
             try
             {
@@ -575,6 +646,11 @@ namespace Services.Auth
                     loadTasks.Add(levelManagementService.LoadLevelListAsync());
                     loadTasks.Add(levelManagementService.LoadLevelLibraryConfigsAsync());
                 }
+                
+                if (inventoryConfigService != null && inventoryConfigService.IsInitialized)
+                {
+                    loadTasks.Add(inventoryConfigService.LoadInventoryConfigAsync());
+                }
 
                 await Task.WhenAll(loadTasks);
 
@@ -594,6 +670,11 @@ namespace Services.Auth
                 {
                     GameDataSyncService.SyncLevelListToScriptableObject(levelManagementService.GetCachedLevelList());
                     GameDataSyncService.SyncLevelLibraryConfigsToContainer(levelManagementService.GetCachedLevelLibraryConfigs());
+                }
+                
+                if (inventoryConfigService != null)
+                {
+                    GameDataSyncService.SyncInventoryConfigToScriptableObject(inventoryConfigService.GetCachedConfigs());
                 }
                 
                 Debug.Log("[FirebaseAuthService] ScriptableObject sync completed");
@@ -657,6 +738,71 @@ namespace Services.Auth
                 {
                     currentUserInfo.LevelProgress = new Services.Data.UserLevelProgress();
                 }
+            }
+        }
+
+        /// <summary>
+        /// Load user inventory from Firestore
+        /// If inventory doesn't exist, initialize it with default towers
+        /// </summary>
+        private async Task LoadUserInventoryAsync(IInventoryService inventoryService, string userId)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(userId))
+                {
+                    Debug.LogWarning("[FirebaseAuthService] Cannot load inventory: userId is empty");
+                    return;
+                }
+
+                // Load user inventory
+                Services.Data.TowerInventoryData inventory = await inventoryService?.LoadUserInventoryAsync(userId);
+                
+                if (inventory != null)
+                {
+                    // Đảm bảo ownedTowers không null
+                    if (inventory.ownedTowers == null)
+                    {
+                        inventory.ownedTowers = new List<Services.Data.InventoryItemData>();
+                        Debug.LogWarning("[FirebaseAuthService] inventory.ownedTowers was null after load, initialized empty list");
+                    }
+
+                    int ownedCount = inventory.ownedTowers?.Count ?? 0;
+                    int selectedCount = inventory.GetSelectedCount();
+                    Debug.Log($"[FirebaseAuthService] Inventory loaded: {ownedCount} towers owned, {selectedCount} selected");
+                }
+                else
+                {
+                    // Initialize inventory for new user if it doesn't exist
+                    Debug.Log("[FirebaseAuthService] No inventory found, initializing new user inventory...");
+                    bool initSuccess = inventoryService != null ? await inventoryService.InitializeUserInventoryAsync(userId) : false;
+                    if (initSuccess)
+                    {
+                        Debug.Log("[FirebaseAuthService] User inventory initialized successfully");
+                        // Reload after initialization
+                        inventory = await inventoryService?.LoadUserInventoryAsync(userId);
+                        if (inventory != null)
+                        {
+                            // Đảm bảo ownedTowers không null
+                            if (inventory.ownedTowers == null)
+                            {
+                                inventory.ownedTowers = new List<Services.Data.InventoryItemData>();
+                                Debug.LogWarning("[FirebaseAuthService] inventory.ownedTowers was null after init, initialized empty list");
+                            }
+
+                            int ownedCount = inventory.ownedTowers?.Count ?? 0;
+                            Debug.Log($"[FirebaseAuthService] Inventory loaded after initialization: {ownedCount} towers owned");
+                        }
+                    }
+                    else
+                    {
+                        Debug.LogWarning("[FirebaseAuthService] Failed to initialize user inventory");
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[FirebaseAuthService] Error loading user inventory: {e.Message}");
             }
         }
 
@@ -746,6 +892,32 @@ namespace Services.Auth
             catch (Exception e)
             {
                 Debug.LogError($"[FirebaseAuthService] Error initializing default stars: {e.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Handle inventory loaded event - tự động sync vào ScriptableObjects
+        /// </summary>
+        private void OnInventoryLoaded(Services.Data.TowerInventoryData inventory)
+        {
+            if (inventory != null)
+            {
+                // Đảm bảo ownedTowers không null
+                if (inventory.ownedTowers == null)
+                {
+                    inventory.ownedTowers = new List<Services.Data.InventoryItemData>();
+                    Debug.LogWarning("[FirebaseAuthService] inventory.ownedTowers was null in event, initialized empty list");
+                }
+
+                Debug.Log("[FirebaseAuthService] Inventory loaded event received, syncing to ScriptableObjects...");
+                // Sync vào TowerInventory (selected towers cho gameplay)
+                GameDataSyncService.SyncUserInventoryToScriptableObject(inventory);
+                // Sync vào UserInventoryScriptableObject (all owned towers)
+                GameDataSyncService.SyncUserInventoryDataToScriptableObject(inventory);
+            }
+            else
+            {
+                Debug.LogWarning("[FirebaseAuthService] OnInventoryLoaded received null inventory");
             }
         }
 

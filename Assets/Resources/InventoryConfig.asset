@@ -1,0 +1,240 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: abb090f7a32894f9fbef4bc9b187a724, type: 3}
+  m_Name: InventoryConfig
+  m_EditorClassIdentifier: Assembly-CSharp::TowerDefense.Towers.Data.InventoryConfigScriptableObject
+  configs:
+  - towerName: Emp1
+    towerType: 0
+    displayName: EMP I
+    description: Slows down enemies with electromagnetic pulses
+    unlockCost: 1800
+    requiredLevel: 6
+    requiredLevels: []
+    isDefaultUnlocked: 0
+    isPurchasable: 1
+    rarity: 1
+    iconName: 
+    sortOrder: 9
+    isActive: 1
+    tags: []
+  - towerName: Emp2
+    towerType: 0
+    displayName: EMP II
+    description: Enhanced EMP with longer stun duration
+    unlockCost: 3500
+    requiredLevel: 11
+    requiredLevels: []
+    isDefaultUnlocked: 0
+    isPurchasable: 1
+    rarity: 2
+    iconName: 
+    sortOrder: 10
+    isActive: 1
+    tags: []
+  - towerName: Emp3
+    towerType: 0
+    displayName: EMP III
+    description: Ultimate EMP system
+    unlockCost: 5500
+    requiredLevel: 16
+    requiredLevels: []
+    isDefaultUnlocked: 0
+    isPurchasable: 1
+    rarity: 3
+    iconName: 
+    sortOrder: 11
+    isActive: 1
+    tags: []
+  - towerName: Laser1
+    towerType: 1
+    displayName: Laser I
+    description: Energy-based tower with precision targeting
+    unlockCost: 1500
+    requiredLevel: 5
+    requiredLevels: []
+    isDefaultUnlocked: 0
+    isPurchasable: 1
+    rarity: 1
+    iconName: 
+    sortOrder: 3
+    isActive: 1
+    tags: []
+  - towerName: Laser2
+    towerType: 1
+    displayName: Laser II
+    description: Enhanced laser with increased damage
+    unlockCost: 3000
+    requiredLevel: 10
+    requiredLevels: []
+    isDefaultUnlocked: 0
+    isPurchasable: 1
+    rarity: 2
+    iconName: 
+    sortOrder: 4
+    isActive: 1
+    tags: []
+  - towerName: Laser3
+    towerType: 1
+    displayName: Laser III
+    description: Ultimate laser tower with devastating power
+    unlockCost: 5000
+    requiredLevel: 15
+    requiredLevels: []
+    isDefaultUnlocked: 0
+    isPurchasable: 1
+    rarity: 3
+    iconName: 
+    sortOrder: 5
+    isActive: 1
+    tags: []
+  - towerName: MachineGun1
+    towerType: 2
+    displayName: Machine Gun I
+    description: Basic rapid-fire tower
+    unlockCost: 0
+    requiredLevel: 0
+    requiredLevels: []
+    isDefaultUnlocked: 1
+    isPurchasable: 0
+    rarity: 0
+    iconName: 
+    sortOrder: 0
+    isActive: 1
+    tags: []
+  - towerName: MachineGun2
+    towerType: 2
+    displayName: Machine Gun II
+    description: Improved machine gun with better fire rate
+    unlockCost: 1000
+    requiredLevel: 3
+    requiredLevels: []
+    isDefaultUnlocked: 0
+    isPurchasable: 1
+    rarity: 1
+    iconName: 
+    sortOrder: 1
+    isActive: 1
+    tags: []
+  - towerName: MachineGun3
+    towerType: 2
+    displayName: Machine Gun III
+    description: Advanced machine gun with superior damage
+    unlockCost: 2500
+    requiredLevel: 8
+    requiredLevels: []
+    isDefaultUnlocked: 0
+    isPurchasable: 1
+    rarity: 2
+    iconName: 
+    sortOrder: 2
+    isActive: 1
+    tags: []
+  - towerName: Pylon1
+    towerType: 3
+    displayName: Pylon I
+    description: Support tower that boosts nearby towers
+    unlockCost: 2200
+    requiredLevel: 9
+    requiredLevels: []
+    isDefaultUnlocked: 0
+    isPurchasable: 1
+    rarity: 2
+    iconName: 
+    sortOrder: 12
+    isActive: 1
+    tags: []
+  - towerName: Pylon2
+    towerType: 3
+    displayName: Pylon II
+    description: Advanced support pylon
+    unlockCost: 4500
+    requiredLevel: 14
+    requiredLevels: []
+    isDefaultUnlocked: 0
+    isPurchasable: 1
+    rarity: 2
+    iconName: 
+    sortOrder: 13
+    isActive: 1
+    tags: []
+  - towerName: Pylon3
+    towerType: 3
+    displayName: Pylon III
+    description: Supreme support tower
+    unlockCost: 7000
+    requiredLevel: 20
+    requiredLevels: []
+    isDefaultUnlocked: 0
+    isPurchasable: 1
+    rarity: 3
+    iconName: 
+    sortOrder: 14
+    isActive: 1
+    tags: []
+  - towerName: Rocket1
+    towerType: 4
+    displayName: Rocket I
+    description: Explosive area damage tower
+    unlockCost: 2000
+    requiredLevel: 7
+    requiredLevels: []
+    isDefaultUnlocked: 0
+    isPurchasable: 1
+    rarity: 1
+    iconName: 
+    sortOrder: 6
+    isActive: 1
+    tags: []
+  - towerName: Rocket2
+    towerType: 4
+    displayName: Rocket II
+    description: Heavy rocket launcher with splash damage
+    unlockCost: 4000
+    requiredLevel: 12
+    requiredLevels: []
+    isDefaultUnlocked: 0
+    isPurchasable: 1
+    rarity: 2
+    iconName: 
+    sortOrder: 7
+    isActive: 1
+    tags: []
+  - towerName: Rocket3
+    towerType: 4
+    displayName: Rocket III
+    description: Advanced missile system
+    unlockCost: 6000
+    requiredLevel: 18
+    requiredLevels: []
+    isDefaultUnlocked: 0
+    isPurchasable: 1
+    rarity: 3
+    iconName: 
+    sortOrder: 8
+    isActive: 1
+    tags: []
+  - towerName: SuperTower
+    towerType: 5
+    displayName: Super Tower
+    description: Legendary all-purpose tower
+    unlockCost: 10000
+    requiredLevel: 25
+    requiredLevels: []
+    isDefaultUnlocked: 0
+    isPurchasable: 1
+    rarity: 3
+    iconName: 
+    sortOrder: 15
+    isActive: 1
+    tags: []
+  spriteMappings: []

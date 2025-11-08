@@ -56,6 +56,8 @@ namespace Services.Managers
             InitializeTowerDataService();
             InitializeLevelManagementService();
             InitializeUserDataService();
+            InitializeInventoryService();
+            InitializeInventoryConfigService();
 
             // Legacy Firestore Service (deprecated - use individual microservices instead)
             // InitializeFirestoreService(); // Commented out to use microservices
@@ -192,6 +194,30 @@ namespace Services.Managers
             GameObject serviceGO = new GameObject("UserDataService");
             Firestore.UserDataService service = serviceGO.AddComponent<Firestore.UserDataService>();
             ServiceLocator.Instance.RegisterService<IUserDataService>(service);
+        }
+
+        private void InitializeInventoryService()
+        {
+            if (ServiceLocator.Instance.IsServiceRegistered<IInventoryService>())
+            {
+                return;
+            }
+
+            GameObject serviceGO = new GameObject("InventoryService");
+            Firestore.InventoryService service = serviceGO.AddComponent<Firestore.InventoryService>();
+            ServiceLocator.Instance.RegisterService<IInventoryService>(service);
+        }
+
+        private void InitializeInventoryConfigService()
+        {
+            if (ServiceLocator.Instance.IsServiceRegistered<IInventoryConfigService>())
+            {
+                return;
+            }
+
+            GameObject serviceGO = new GameObject("InventoryConfigService");
+            Firestore.InventoryConfigService service = serviceGO.AddComponent<Firestore.InventoryConfigService>();
+            ServiceLocator.Instance.RegisterService<IInventoryConfigService>(service);
         }
 
         /// <summary>

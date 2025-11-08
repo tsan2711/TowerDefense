@@ -47,59 +47,113 @@ namespace TowerDefense.Towers.Data
 			m_ConfigurationDictionary = configurations.ToDictionary(t => t.towerName);
 		}
 
+		/// <summary>
+		/// Ensure dictionary is initialized before use
+		/// </summary>
+		private void EnsureDictionaryInitialized()
+		{
+			if (m_ConfigurationDictionary == null)
+			{
+				if (configurations == null)
+				{
+					configurations = new List<Tower>();
+					m_ConfigurationDictionary = new Dictionary<string, Tower>();
+					return;
+				}
+				
+				// Build dictionary manually to handle null towers and duplicate names
+				m_ConfigurationDictionary = new Dictionary<string, Tower>();
+				foreach (var tower in configurations)
+				{
+					if (tower != null && !string.IsNullOrEmpty(tower.towerName))
+					{
+						// Skip if duplicate key (shouldn't happen but safe)
+						if (!m_ConfigurationDictionary.ContainsKey(tower.towerName))
+						{
+							m_ConfigurationDictionary[tower.towerName] = tower;
+						}
+					}
+				}
+			}
+		}
+
 		public bool ContainsKey(string key)
 		{
+			EnsureDictionaryInitialized();
 			return m_ConfigurationDictionary.ContainsKey(key);
 		}
 
 		public void Add(string key, Tower value)
 		{
+			EnsureDictionaryInitialized();
 			m_ConfigurationDictionary.Add(key, value);
 		}
 
 		public bool Remove(string key)
 		{
+			EnsureDictionaryInitialized();
 			return m_ConfigurationDictionary.Remove(key);
 		}
 
 		public bool TryGetValue(string key, out Tower value)
 		{
+			EnsureDictionaryInitialized();
 			return m_ConfigurationDictionary.TryGetValue(key, out value);
 		}
 
 		Tower IDictionary<string, Tower>.this[string key]
 		{
-			get { return m_ConfigurationDictionary[key]; }
-			set { m_ConfigurationDictionary[key] = value; }
+			get 
+			{ 
+				EnsureDictionaryInitialized();
+				return m_ConfigurationDictionary[key]; 
+			}
+			set 
+			{ 
+				EnsureDictionaryInitialized();
+				m_ConfigurationDictionary[key] = value; 
+			}
 		}
 
 		public ICollection<string> Keys
 		{
-			get { return ((IDictionary<string, Tower>) m_ConfigurationDictionary).Keys; }
+			get 
+			{ 
+				EnsureDictionaryInitialized();
+				return ((IDictionary<string, Tower>) m_ConfigurationDictionary).Keys; 
+			}
 		}
 
 		ICollection<Tower> IDictionary<string, Tower>.Values
 		{
-			get { return m_ConfigurationDictionary.Values; }
+			get 
+			{ 
+				EnsureDictionaryInitialized();
+				return m_ConfigurationDictionary.Values; 
+			}
 		}
 
 		IEnumerator<KeyValuePair<string, Tower>> IEnumerable<KeyValuePair<string, Tower>>.GetEnumerator()
 		{
+			EnsureDictionaryInitialized();
 			return m_ConfigurationDictionary.GetEnumerator();
 		}
 
 		public void Add(KeyValuePair<string, Tower> item)
 		{
+			EnsureDictionaryInitialized();
 			m_ConfigurationDictionary.Add(item.Key, item.Value);
 		}
 
 		public bool Remove(KeyValuePair<string, Tower> item)
 		{
+			EnsureDictionaryInitialized();
 			return m_ConfigurationDictionary.Remove(item.Key);
 		}
 
 		public bool Contains(KeyValuePair<string, Tower> item)
 		{
+			EnsureDictionaryInitialized();
 			return m_ConfigurationDictionary.Contains(item);
 		}
 
