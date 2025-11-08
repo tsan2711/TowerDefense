@@ -25,6 +25,9 @@ namespace Services.UI
         [Header("Panel Navigation")]
         [SerializeField] private Button switchToSignUpButton;
         [SerializeField] private Button switchToLoginButton;
+        [SerializeField] private Button openLoginPanelButton;
+        [SerializeField] private Button closeLoginPanelButton;
+        [SerializeField] private Button closeSignUpPanelButton;
 
         [Header("Sign Out")]
         [SerializeField] private Button signOutButton;
@@ -36,10 +39,13 @@ namespace Services.UI
         [Header("Sign Up Panel Inputs")]
         [SerializeField] private TMP_InputField signUpUsernameInputField;
         [SerializeField] private TMP_InputField signUpPasswordInputField;
-        [SerializeField] private TMP_InputField signUpConfirmPasswordInputField;
 
         [Header("UI Display")]
         [SerializeField] private TextMeshProUGUI userInfoText;
+        [SerializeField] private GameObject loadingPanel;
+        [SerializeField] private Slider loadingSlider;
+        [SerializeField] private TextMeshProUGUI loadingSliderText;
+        [SerializeField] private GameObject mainMenuPanel;
         [SerializeField] private GameObject loginPanel;
         [SerializeField] private GameObject signUpPanel;
         [SerializeField] private GameObject userInfoPanel;
@@ -60,24 +66,60 @@ namespace Services.UI
         [SerializeField] private string menuSceneName = "MenuScene";
         [Tooltip("Delay (giây) trước khi chuyển scene sau khi đăng nhập thành công")]
         [SerializeField] private float sceneTransitionDelay = 1f;
+        
+        [Header("Loading Panel Settings")]
+        [Tooltip("Thời gian hiển thị loading panel khi vào game (giây)")]
+        [SerializeField] private float initialLoadingDuration = 2.5f;
+        [Tooltip("Thời gian hiển thị loading panel trước khi load scene sau khi đăng nhập thành công (giây)")]
+        [SerializeField] private float loginSuccessLoadingDuration = 2f;
 
         private IAuthService authService;
         private bool isServiceReady = false;
         private bool hasCheckedButtonsAfterInit = false; // Flag để chỉ check buttons một lần sau khi init
         private bool hasAutoSignedOut = false; // Flag để tránh đăng xuất auto login nhiều lần
+        private Vector2 loadingPanelOriginalPosition; // Lưu vị trí ban đầu của loading panel
 
         private void Awake()
         {
-            // Initialize UI - show login panel by default
+            // Initialize UI - show loading panel first
+            if (loadingPanel != null)
+            {
+                // Lưu vị trí ban đầu của loading panel
+                RectTransform loadingRectTransform = loadingPanel.GetComponent<RectTransform>();
+                if (loadingRectTransform != null)
+                {
+                    loadingPanelOriginalPosition = loadingRectTransform.anchoredPosition;
+                }
+                
+                loadingPanel.SetActive(true);
+                // Reset alpha nếu có CanvasGroup để đảm bảo animation hoạt động đúng
+                CanvasGroup loadingCanvasGroup = loadingPanel.GetComponent<CanvasGroup>();
+                if (loadingCanvasGroup != null)
+                {
+                    loadingCanvasGroup.alpha = 1f;
+                }
+                
+                // Reset loading slider
+                if (loadingSlider != null)
+                {
+                    loadingSlider.value = 0f;
+                }
+                
+                // Reset loading slider text
+                if (loadingSliderText != null)
+                {
+                    loadingSliderText.text = "0%";
+                }
+            }
+
+            if (mainMenuPanel != null)
+            {
+                mainMenuPanel.SetActive(false);
+            }
+
             if (loginPanel != null)
             {
-                loginPanel.SetActive(true);
-                // Reset alpha nếu có CanvasGroup để đảm bảo animation hoạt động đúng
-                CanvasGroup loginCanvasGroup = loginPanel.GetComponent<CanvasGroup>();
-                if (loginCanvasGroup != null)
-                {
-                    loginCanvasGroup.alpha = 1f;
-                }
+                loginPanel.SetActive(false);
             }
 
             if (signUpPanel != null)
@@ -99,14 +141,53 @@ namespace Services.UI
             
             if (switchToLoginButton != null)
             {
-                switchToLoginButton.interactable = false; // Already on login panel
+                switchToLoginButton.interactable = false; // Will be on login panel when opened
             }
         }
 
         private void Start()
         {
+            // Start initial loading animation
+            StartCoroutine(ShowInitialLoading());
+            
             // Start coroutine to wait for service to be ready
             StartCoroutine(WaitForAuthService());
+        }
+
+        /// <summary>
+        /// Show loading panel when game starts, then hide it after duration
+        /// </summary>
+        private IEnumerator ShowInitialLoading()
+        {
+            // Reset loading panel position and slider
+            ResetLoadingPanel();
+            
+            // Show loading panel with slide animation
+            if (loadingPanel != null)
+            {
+                UIAnimationHelper.ShowPanel(loadingPanel, UIAnimationHelper.AnimationType.SlideBottom, panelTransitionDuration);
+            }
+            
+            // Animate loading slider from 0 to 1
+            StartCoroutine(AnimateLoadingSlider(initialLoadingDuration));
+            
+            // Wait for initial loading duration
+            yield return new WaitForSeconds(initialLoadingDuration);
+            
+            // Hide loading panel with slide animation
+            if (loadingPanel != null)
+            {
+                UIAnimationHelper.HidePanel(loadingPanel, UIAnimationHelper.AnimationType.SlideBottom, panelTransitionDuration);
+            }
+            
+            // Show main menu panel after loading is done
+            yield return new WaitForSeconds(panelTransitionDuration);
+            
+            if (mainMenuPanel != null && !mainMenuPanel.activeSelf)
+            {
+                mainMenuPanel.SetActive(true);
+                UIAnimationHelper.ShowPanel(mainMenuPanel, panelAnimationType, panelTransitionDuration);
+            }
         }
 
         /// <summary>
@@ -410,6 +491,24 @@ namespace Services.UI
                 switchToLoginButton.onClick.AddListener(SwitchToLoginPanel);
             }
 
+            if (openLoginPanelButton != null)
+            {
+                openLoginPanelButton.onClick.RemoveAllListeners();
+                openLoginPanelButton.onClick.AddListener(OpenLoginPanel);
+            }
+
+            if (closeLoginPanelButton != null)
+            {
+                closeLoginPanelButton.onClick.RemoveAllListeners();
+                closeLoginPanelButton.onClick.AddListener(CloseLoginPanel);
+            }
+
+            if (closeSignUpPanelButton != null)
+            {
+                closeSignUpPanelButton.onClick.RemoveAllListeners();
+                closeSignUpPanelButton.onClick.AddListener(CloseSignUpPanel);
+            }
+
             if (signOutButton != null)
             {
                 signOutButton.onClick.RemoveAllListeners();
@@ -566,24 +665,28 @@ namespace Services.UI
                 UpdateUserInfo(null);
                 ClearPasswordField();
                 
-                // Force update UI to show login panel and enable buttons
+                // Force update UI to show main menu panel and enable buttons
                 UpdateUI();
                 
-                // Ensure login panel is visible với animation
+                // Ensure main menu panel is visible với animation
                 if (userInfoPanel != null && userInfoPanel.activeSelf)
                 {
                     UIAnimationHelper.HidePanel(userInfoPanel, panelAnimationType, panelTransitionDuration);
                 }
-                if (loginPanel != null && !loginPanel.activeSelf)
+                if (loginPanel != null && loginPanel.activeSelf)
                 {
-                    UIAnimationHelper.ShowPanel(loginPanel, panelAnimationType, panelTransitionDuration);
+                    UIAnimationHelper.HidePanel(loginPanel, panelAnimationType, panelTransitionDuration);
                 }
                 if (signUpPanel != null && signUpPanel.activeSelf)
                 {
                     UIAnimationHelper.HidePanel(signUpPanel, panelAnimationType, panelTransitionDuration);
                 }
+                if (mainMenuPanel != null && !mainMenuPanel.activeSelf)
+                {
+                    UIAnimationHelper.ShowPanel(mainMenuPanel, panelAnimationType, panelTransitionDuration);
+                }
                 
-                Debug.Log("[UILoginManager] ✅ Đăng xuất thành công. Login/signup buttons đã được enable.");
+                Debug.Log("[UILoginManager] ✅ Đăng xuất thành công. Main menu panel đã được hiển thị.");
             }
             catch (System.Exception e)
             {
@@ -651,7 +754,7 @@ namespace Services.UI
                 }
             }
         }
-
+    
         private void OnSignInSuccess(UserInfo user)
         {
             Debug.Log($"[UILoginManager] Sign in success: {user?.Email ?? "Unknown"}");
@@ -745,7 +848,11 @@ namespace Services.UI
             // Update panel visibility với animation mượt mà
             if (isAuthenticated)
             {
-                // Hide both login and signup panels when authenticated
+                // Hide all panels when authenticated and show user info panel
+                if (mainMenuPanel != null && mainMenuPanel.activeSelf)
+                {
+                    UIAnimationHelper.HidePanel(mainMenuPanel, panelAnimationType, panelTransitionDuration);
+                }
                 if (loginPanel != null && loginPanel.activeSelf)
                 {
                     UIAnimationHelper.HidePanel(loginPanel, panelAnimationType, panelTransitionDuration);
@@ -935,7 +1042,7 @@ namespace Services.UI
 
         private bool ValidateSignUpInputs()
         {
-            if (signUpUsernameInputField == null || signUpPasswordInputField == null || signUpConfirmPasswordInputField == null)
+            if (signUpUsernameInputField == null || signUpPasswordInputField == null)
             {
                 SetStatus("Lỗi: Input fields không được cấu hình", true);
                 return false;
@@ -943,7 +1050,6 @@ namespace Services.UI
 
             string username = signUpUsernameInputField.text.Trim();
             string password = signUpPasswordInputField.text;
-            string confirmPassword = signUpConfirmPasswordInputField.text;
 
             if (string.IsNullOrEmpty(username))
             {
@@ -954,12 +1060,6 @@ namespace Services.UI
             if (string.IsNullOrEmpty(password))
             {
                 SetStatus("Vui lòng nhập mật khẩu", true);
-                return false;
-            }
-
-            if (string.IsNullOrEmpty(confirmPassword))
-            {
-                SetStatus("Vui lòng xác nhận mật khẩu", true);
                 return false;
             }
 
@@ -975,13 +1075,6 @@ namespace Services.UI
             if (password.Length < 6)
             {
                 SetStatus("Mật khẩu phải có ít nhất 6 ký tự", true);
-                return false;
-            }
-
-            // Password match validation
-            if (password != confirmPassword)
-            {
-                SetStatus("Mật khẩu xác nhận không khớp", true);
                 return false;
             }
 
@@ -1047,14 +1140,92 @@ namespace Services.UI
 
         private void ClearSignUpFields()
         {
+            if (signUpUsernameInputField != null)
+            {
+                signUpUsernameInputField.text = "";
+            }
             if (signUpPasswordInputField != null)
             {
                 signUpPasswordInputField.text = "";
             }
-            if (signUpConfirmPasswordInputField != null)
-            {
-                signUpConfirmPasswordInputField.text = "";
-            }
+        }
+
+        /// <summary>
+        /// Open Login panel from main menu với animation mượt mà
+        /// </summary>
+        public void OpenLoginPanel()
+        {
+            // Kill any existing animations
+            if (mainMenuPanel != null) UIAnimationHelper.KillTweens(mainMenuPanel);
+            if (loginPanel != null) UIAnimationHelper.KillTweens(loginPanel);
+            if (signUpPanel != null) UIAnimationHelper.KillTweens(signUpPanel);
+            
+            // Switch from main menu to login panel với animation
+            UIAnimationHelper.SwitchPanels(
+                hidePanel: mainMenuPanel,
+                showPanel: loginPanel,
+                duration: panelTransitionDuration,
+                onComplete: () =>
+                {
+                    // Update button states
+                    if (switchToSignUpButton != null)
+                    {
+                        switchToSignUpButton.interactable = true; // Can switch to signup
+                    }
+                    
+                    if (switchToLoginButton != null)
+                    {
+                        switchToLoginButton.interactable = false; // Currently on login panel
+                    }
+
+                    // Clear status when switching
+                    ClearStatus();
+                }
+            );
+        }
+
+        /// <summary>
+        /// Close Login panel and return to main menu với animation mượt mà
+        /// </summary>
+        public void CloseLoginPanel()
+        {
+            // Kill any existing animations
+            if (mainMenuPanel != null) UIAnimationHelper.KillTweens(mainMenuPanel);
+            if (loginPanel != null) UIAnimationHelper.KillTweens(loginPanel);
+            
+            // Switch from login panel to main menu với animation
+            UIAnimationHelper.SwitchPanels(
+                hidePanel: loginPanel,
+                showPanel: mainMenuPanel,
+                duration: panelTransitionDuration,
+                onComplete: () =>
+                {
+                    // Clear status when switching
+                    ClearStatus();
+                }
+            );
+        }
+
+        /// <summary>
+        /// Close Sign Up panel and return to main menu với animation mượt mà
+        /// </summary>
+        public void CloseSignUpPanel()
+        {
+            // Kill any existing animations
+            if (mainMenuPanel != null) UIAnimationHelper.KillTweens(mainMenuPanel);
+            if (signUpPanel != null) UIAnimationHelper.KillTweens(signUpPanel);
+            
+            // Switch from signup panel to main menu với animation
+            UIAnimationHelper.SwitchPanels(
+                hidePanel: signUpPanel,
+                showPanel: mainMenuPanel,
+                duration: panelTransitionDuration,
+                onComplete: () =>
+                {
+                    // Clear status when switching
+                    ClearStatus();
+                }
+            );
         }
 
         /// <summary>
@@ -1216,7 +1387,7 @@ namespace Services.UI
         }
 
         /// <summary>
-        /// Coroutine để chuyển đến scene menu sau một khoảng delay
+        /// Coroutine để chuyển đến scene menu sau khi hiển thị loading panel
         /// </summary>
         private IEnumerator LoadMenuSceneAfterDelay()
         {
@@ -1227,8 +1398,53 @@ namespace Services.UI
                 yield break;
             }
             
-            // Đợi một khoảng thời gian trước khi chuyển scene
-            yield return new WaitForSeconds(sceneTransitionDelay);
+            // Hide all panels first
+            if (mainMenuPanel != null && mainMenuPanel.activeSelf)
+            {
+                UIAnimationHelper.HidePanel(mainMenuPanel, panelAnimationType, panelTransitionDuration);
+            }
+            if (loginPanel != null && loginPanel.activeSelf)
+            {
+                UIAnimationHelper.HidePanel(loginPanel, panelAnimationType, panelTransitionDuration);
+            }
+            if (signUpPanel != null && signUpPanel.activeSelf)
+            {
+                UIAnimationHelper.HidePanel(signUpPanel, panelAnimationType, panelTransitionDuration);
+            }
+            if (userInfoPanel != null && userInfoPanel.activeSelf)
+            {
+                UIAnimationHelper.HidePanel(userInfoPanel, panelAnimationType, panelTransitionDuration);
+            }
+            
+            // Wait for panels to hide
+            yield return new WaitForSeconds(panelTransitionDuration);
+            
+            // Prepare loading panel - ensure it's active and visible
+            if (loadingPanel != null)
+            {
+                // Reset loading panel position and slider before showing
+                ResetLoadingPanel();
+                
+                loadingPanel.SetActive(true);
+                // Reset alpha nếu có CanvasGroup để đảm bảo animation hoạt động đúng
+                CanvasGroup loadingCanvasGroup = loadingPanel.GetComponent<CanvasGroup>();
+                if (loadingCanvasGroup != null)
+                {
+                    loadingCanvasGroup.alpha = 0f; // Start from invisible for slide animation
+                }
+                
+                // Show loading panel with slide animation
+                UIAnimationHelper.ShowPanel(loadingPanel, UIAnimationHelper.AnimationType.SlideBottom, panelTransitionDuration);
+            }
+            
+            // Wait for loading panel slide animation to complete
+            yield return new WaitForSeconds(panelTransitionDuration);
+            
+            // Animate loading slider from 0 to 1
+            StartCoroutine(AnimateLoadingSlider(loginSuccessLoadingDuration));
+            
+            // Wait for login success loading duration (2 seconds)
+            yield return new WaitForSeconds(loginSuccessLoadingDuration);
             
             // Chuyển đến scene menu
             try
@@ -1243,9 +1459,76 @@ namespace Services.UI
             }
         }
 
+        /// <summary>
+        /// Reset loading panel position to original position
+        /// </summary>
+        private void ResetLoadingPanel()
+        {
+            if (loadingPanel != null)
+            {
+                // Kill any existing tweens
+                UIAnimationHelper.KillTweens(loadingPanel);
+                
+                // Reset position to original
+                RectTransform loadingRectTransform = loadingPanel.GetComponent<RectTransform>();
+                if (loadingRectTransform != null)
+                {
+                    loadingRectTransform.anchoredPosition = loadingPanelOriginalPosition;
+                }
+                
+                // Reset slider
+                if (loadingSlider != null)
+                {
+                    loadingSlider.value = 0f;
+                }
+                
+                // Reset loading slider text
+                if (loadingSliderText != null)
+                {
+                    loadingSliderText.text = "0%";
+                }
+            }
+        }
+
+        /// <summary>
+        /// Animate loading slider from 0 to 1 over duration
+        /// </summary>
+        private IEnumerator AnimateLoadingSlider(float duration)
+        {
+            if (loadingSlider == null) yield break;
+            
+            float elapsed = 0f;
+            while (elapsed < duration)
+            {
+                elapsed += Time.deltaTime;
+                float progress = Mathf.Clamp01(elapsed / duration);
+                
+                // Update slider value
+                loadingSlider.value = progress;
+                
+                // Update slider text with percentage
+                if (loadingSliderText != null)
+                {
+                    int percentage = Mathf.RoundToInt(progress * 100f);
+                    loadingSliderText.text = $"{percentage}%";
+                }
+                
+                yield return null;
+            }
+            
+            // Ensure slider is at 100%
+            loadingSlider.value = 1f;
+            if (loadingSliderText != null)
+            {
+                loadingSliderText.text = "100%";
+            }
+        }
+
         private void OnDestroy()
         {
             // Kill all tweens khi destroy
+            if (loadingPanel != null) UIAnimationHelper.KillTweens(loadingPanel);
+            if (mainMenuPanel != null) UIAnimationHelper.KillTweens(mainMenuPanel);
             if (loginPanel != null) UIAnimationHelper.KillTweens(loginPanel);
             if (signUpPanel != null) UIAnimationHelper.KillTweens(signUpPanel);
             if (userInfoPanel != null) UIAnimationHelper.KillTweens(userInfoPanel);

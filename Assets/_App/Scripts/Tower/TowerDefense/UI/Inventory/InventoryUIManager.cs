@@ -38,12 +38,13 @@ namespace TowerDefense.UI.Inventory
         [SerializeField] private float refreshDelay = 0.5f;
         
         [Header("Data References")]
-        [SerializeField] private TowerLibrary towerLibrary;
+        [SerializeField] private TowerLibraryContainer libraryContainer;
         [SerializeField] private UserInventoryScriptableObject userInventory;
+        [SerializeField] private string currentLevelId = "level_1";
         
         // Services
         private IInventoryService inventoryService;
-        private Services.Auth.IAuthService authService;
+        private IAuthService authService;
         
         // Slots
         private List<TowerInventorySlot> selectedSlots = new List<TowerInventorySlot>();
@@ -58,7 +59,7 @@ namespace TowerDefense.UI.Inventory
         {
             // Get services
             inventoryService = ServiceLocator.Instance?.GetService<IInventoryService>();
-            authService = ServiceLocator.Instance?.GetService<Services.Auth.IAuthService>();
+            authService = ServiceLocator.Instance?.GetService<IAuthService>();
             
             if (inventoryService == null)
             {
@@ -200,7 +201,7 @@ namespace TowerDefense.UI.Inventory
         /// </summary>
         private void RefreshInventoryDisplay(TowerInventoryData inventoryData)
         {
-            if (inventoryData == null || towerLibrary == null)
+            if (inventoryData == null || libraryContainer == null)
                 return;
             
             // Clear inventory slots
@@ -267,11 +268,232 @@ namespace TowerDefense.UI.Inventory
         /// </summary>
         private Tower GetTowerFromLibrary(string towerName)
         {
-            if (towerLibrary == null || string.IsNullOrEmpty(towerName))
+            if (libraryContainer == null || string.IsNullOrEmpty(towerName) || string.IsNullOrEmpty(currentLevelId))
                 return null;
             
-            towerLibrary.TryGetValue(towerName, out Tower tower);
+            TowerLibrary library = libraryContainer.GetLibrary(currentLevelId);
+            if (library == null)
+            {
+                Debug.LogWarning($"[InventoryUIManager] Library not found for levelId: {currentLevelId}");
+                return null;
+            }
+            
+            library.TryGetValue(towerName, out Tower tower);
             return tower;
+        }
+
+        /// <summary>
+        /// Change library (level) and set all towers from that library to user inventory
+        /// </summary>
+        /// <param name="levelId">The level ID to switch to</param>
+        public void ChangeLibrary(string levelId)
+        {
+            if (libraryContainer == null)
+            {
+                Debug.LogError("[InventoryUIManager] LibraryContainer is null, cannot change library");
+                return;
+            }
+
+            if (string.IsNullOrEmpty(levelId))
+            {
+                Debug.LogError("[InventoryUIManager] levelId is null or empty");
+                return;
+            }
+
+            TowerLibrary library = libraryContainer.GetLibrary(levelId);
+            if (library == null)
+            {
+                Debug.LogError($"[InventoryUIManager] Library not found for levelId: {levelId}");
+                return;
+            }
+
+            // Update current level ID
+            currentLevelId = levelId;
+
+            // Set all towers from library to user inventory
+            SetLibraryTowersToUserInventory(library);
+
+            // Refresh display
+            LoadInventoryData();
+        }
+
+        /// <summary>
+        /// Set all towers from a library to user inventory
+        /// </summary>
+        private void SetLibraryTowersToUserInventory(TowerLibrary library)
+        {
+            if (library == null || userInventory == null)
+            {
+                Debug.LogError("[InventoryUIManager] Library or UserInventory is null");
+                return;
+            }
+
+            if (inventoryService == null || string.IsNullOrEmpty(currentUserId))
+            {
+                Debug.LogWarning("[InventoryUIManager] InventoryService or userId not available, updating ScriptableObject only");
+                SetLibraryTowersToScriptableObject(library);
+                return;
+            }
+
+            // Get all towers from library
+            List<Tower> libraryTowers = new List<Tower>();
+            if (library.configurations != null)
+            {
+                libraryTowers = library.configurations.Where(t => t != null).ToList();
+            }
+
+            if (libraryTowers.Count == 0)
+            {
+                Debug.LogWarning("[InventoryUIManager] Library has no towers");
+                return;
+            }
+
+            // Create inventory items from library towers
+            List<InventoryItemData> inventoryItems = new List<InventoryItemData>();
+            foreach (var tower in libraryTowers)
+            {
+                // Check if user already owns this tower
+                InventoryItemData existingItem = userInventory.GetTower(tower.towerName);
+                
+                if (existingItem != null)
+                {
+                    // Keep existing item (preserve selection state, usage count, etc.)
+                    inventoryItems.Add(existingItem);
+                }
+                else
+                {
+                    // Create new inventory item
+                    InventoryItemData newItem = new InventoryItemData
+                    {
+                        towerName = tower.towerName,
+                        towerType = (int)tower.mainTower,
+                        isSelected = false,
+                        unlockedAt = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                        usageCount = 0
+                    };
+                    inventoryItems.Add(newItem);
+                }
+            }
+
+            // Update user inventory ScriptableObject
+            userInventory.ownedTowers = inventoryItems;
+            userInventory.lastUpdated = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+#if UNITY_EDITOR
+            UnityEditor.EditorUtility.SetDirty(userInventory);
+#endif
+
+            // Update backend via service - unlock new towers
+            StartCoroutine(UnlockNewTowersToBackend(libraryTowers));
+
+            Debug.Log($"[InventoryUIManager] Set {inventoryItems.Count} towers from library to user inventory");
+        }
+
+        /// <summary>
+        /// Set library towers to ScriptableObject only (fallback when service not available)
+        /// </summary>
+        private void SetLibraryTowersToScriptableObject(TowerLibrary library)
+        {
+            if (library == null || userInventory == null)
+                return;
+
+            List<Tower> libraryTowers = new List<Tower>();
+            if (library.configurations != null)
+            {
+                libraryTowers = library.configurations.Where(t => t != null).ToList();
+            }
+
+            List<InventoryItemData> inventoryItems = new List<InventoryItemData>();
+            foreach (var tower in libraryTowers)
+            {
+                InventoryItemData existingItem = userInventory.GetTower(tower.towerName);
+                
+                if (existingItem != null)
+                {
+                    inventoryItems.Add(existingItem);
+                }
+                else
+                {
+                    InventoryItemData newItem = new InventoryItemData
+                    {
+                        towerName = tower.towerName,
+                        towerType = (int)tower.mainTower,
+                        isSelected = false,
+                        unlockedAt = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                        usageCount = 0
+                    };
+                    inventoryItems.Add(newItem);
+                }
+            }
+
+            userInventory.ownedTowers = inventoryItems;
+            userInventory.lastUpdated = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+#if UNITY_EDITOR
+            UnityEditor.EditorUtility.SetDirty(userInventory);
+#endif
+        }
+
+        /// <summary>
+        /// Unlock new towers to backend
+        /// </summary>
+        private IEnumerator UnlockNewTowersToBackend(List<Tower> libraryTowers)
+        {
+            if (inventoryService == null || string.IsNullOrEmpty(currentUserId))
+            {
+                Debug.LogWarning("[InventoryUIManager] Cannot unlock towers: missing service or userId");
+                yield break;
+            }
+
+            if (libraryTowers == null || libraryTowers.Count == 0)
+            {
+                yield break;
+            }
+
+            Debug.Log($"[InventoryUIManager] Unlocking {libraryTowers.Count} towers to backend...");
+
+            int successCount = 0;
+            int failCount = 0;
+
+            foreach (var tower in libraryTowers)
+            {
+                if (tower == null || string.IsNullOrEmpty(tower.towerName))
+                    continue;
+
+                // Check if user already owns this tower
+                if (userInventory.HasTower(tower.towerName))
+                {
+                    continue; // Skip if already owned
+                }
+
+                // Unlock tower
+                var task = inventoryService.UnlockTowerAsync(currentUserId, tower.towerName);
+                yield return new WaitUntil(() => task.IsCompleted);
+
+                if (task.Result)
+                {
+                    successCount++;
+                }
+                else
+                {
+                    failCount++;
+                    Debug.LogWarning($"[InventoryUIManager] Failed to unlock tower: {tower.towerName}");
+                }
+            }
+
+            if (successCount > 0)
+            {
+                Debug.Log($"[InventoryUIManager] ✅ Successfully unlocked {successCount} towers to backend");
+            }
+
+            if (failCount > 0)
+            {
+                Debug.LogError($"[InventoryUIManager] ❌ Failed to unlock {failCount} towers");
+            }
+
+            // Reload inventory after unlocking
+            yield return new WaitForSeconds(0.5f);
+            LoadInventoryData();
         }
         
         /// <summary>

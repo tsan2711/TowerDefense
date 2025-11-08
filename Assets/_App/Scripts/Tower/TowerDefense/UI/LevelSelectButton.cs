@@ -5,6 +5,7 @@ using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using TMPro;
+using DG.Tweening;
 
 namespace TowerDefense.UI
 {
@@ -12,7 +13,7 @@ namespace TowerDefense.UI
 	/// The button for selecting a level
 	/// </summary>
 	[RequireComponent(typeof(Button))]
-	public class LevelSelectButton : MonoBehaviour, ISelectHandler
+	public class LevelSelectButton : MonoBehaviour, ISelectHandler, IPointerEnterHandler, IPointerExitHandler
 	{
 		/// <summary>
 		/// Reference to the required button component
@@ -49,6 +50,49 @@ namespace TowerDefense.UI
 		protected MouseScroll m_MouseScroll;
 
 		/// <summary>
+		/// List of all Image components in children (excluding stars array)
+		/// </summary>
+		private Image[] m_ChildImages;
+
+		/// <summary>
+		/// List of all TextMeshProUGUI components in children
+		/// </summary>
+		private TextMeshProUGUI[] m_ChildTexts;
+
+		/// <summary>
+		/// Original colors of child Image components
+		/// </summary>
+		private Color[] m_OriginalImageColors;
+
+		/// <summary>
+		/// Original colors of child TextMeshProUGUI components
+		/// </summary>
+		private Color[] m_OriginalTextColors;
+
+		[Header("DOTween Animation Settings")]
+		[SerializeField] private float hoverScale = 1.05f;
+		[SerializeField] private float hoverDuration = 0.2f;
+		[SerializeField] private Ease hoverEase = Ease.OutQuad;
+		[SerializeField] private float clickScale = 0.95f;
+		[SerializeField] private float clickDuration = 0.1f;
+		[SerializeField] private Ease clickEase = Ease.OutBack;
+
+		/// <summary>
+		/// Original scale of the button
+		/// </summary>
+		private Vector3 m_OriginalScale;
+
+		/// <summary>
+		/// Current active tween for hover animation
+		/// </summary>
+		private Tween m_HoverTween;
+
+		/// <summary>
+		/// Current active tween for click animation
+		/// </summary>
+		private Tween m_ClickTween;
+
+		/// <summary>
 		/// The data concerning the level this button displays
 		/// </summary>
 		protected LevelItem m_Item;
@@ -69,7 +113,9 @@ namespace TowerDefense.UI
 				// Level is locked, don't allow click
 				return;
 			}
-			ChangeScenes();
+
+			// Play click animation and delay scene change to allow animation to play
+			PlayClickAnimation(() => ChangeScenes());
 		}
 
 		/// <summary>
@@ -91,6 +137,9 @@ namespace TowerDefense.UI
 			
 			// Find level index in level list
 			m_LevelIndex = GetLevelIndex(item);
+			
+			// Setup button onClick listener
+			SetupButtonListener();
 			
 			// Setup button state and stars
 			UpdateButtonState();
@@ -148,6 +197,9 @@ namespace TowerDefense.UI
 			// Enable/disable button
 			m_Button.interactable = !isLocked;
 
+			// Initialize child components if not already done
+			InitializeChildComponents();
+
 			// Get image component for color change
 			Image imageToColor = buttonImage;
 			if (imageToColor == null && m_Button.targetGraphic != null)
@@ -178,6 +230,12 @@ namespace TowerDefense.UI
 					imageToColor.color = m_OriginalColor;
 				}
 			}
+
+			// Update all child Image components
+			UpdateChildImagesColor(isLocked);
+
+			// Update all child TextMeshProUGUI components
+			UpdateChildTextsColor(isLocked);
 		}
 
 		/// <summary>
@@ -211,6 +269,19 @@ namespace TowerDefense.UI
 		/// </summary>
 		protected void ChangeScenes()
 		{
+			if (m_Item == null)
+			{
+				Debug.LogError("[LevelSelectButton] Cannot change scene: m_Item is null");
+				return;
+			}
+
+			if (string.IsNullOrEmpty(m_Item.sceneName))
+			{
+				Debug.LogError($"[LevelSelectButton] Cannot change scene: sceneName is null or empty for level {m_Item.name}");
+				return;
+			}
+
+			Debug.Log($"[LevelSelectButton] Loading scene: {m_Item.sceneName} for level: {m_Item.name}");
 			SceneManager.LoadScene(m_Item.sceneName);
 		}
 
@@ -235,6 +306,154 @@ namespace TowerDefense.UI
 			{
 				m_OriginalColor = buttonImage.color;
 			}
+
+			// Store original scale
+			if (m_OriginalScale == Vector3.zero)
+			{
+				m_OriginalScale = transform.localScale;
+			}
+		}
+
+		/// <summary>
+		/// Setup onClick listener for the button
+		/// </summary>
+		private void SetupButtonListener()
+		{
+			if (m_Button == null)
+			{
+				Debug.LogWarning("[LevelSelectButton] Button component is null, cannot setup listener");
+				return;
+			}
+
+			// Remove existing listeners to avoid duplicates
+			m_Button.onClick.RemoveAllListeners();
+			
+			// Add ButtonClicked as listener
+			m_Button.onClick.AddListener(ButtonClicked);
+		}
+
+		/// <summary>
+		/// Initialize all child Image and TextMeshProUGUI components and store their original colors
+		/// </summary>
+		private void InitializeChildComponents()
+		{
+			// Only initialize once
+			if (m_ChildImages != null && m_ChildTexts != null)
+			{
+				return;
+			}
+
+			// Get all Image components in children (excluding this component and stars)
+			System.Collections.Generic.List<Image> imageList = new System.Collections.Generic.List<Image>();
+			Image[] allImages = GetComponentsInChildren<Image>(true);
+			foreach (Image img in allImages)
+			{
+				// Skip Image component of this GameObject (button itself)
+				if (img.transform == transform)
+				{
+					continue;
+				}
+				// Skip stars array
+				if (stars != null && System.Array.IndexOf(stars, img) >= 0)
+				{
+					continue;
+				}
+				imageList.Add(img);
+			}
+			m_ChildImages = imageList.ToArray();
+
+			// Get all TextMeshProUGUI components in children (excluding this component)
+			System.Collections.Generic.List<TextMeshProUGUI> textList = new System.Collections.Generic.List<TextMeshProUGUI>();
+			TextMeshProUGUI[] allTexts = GetComponentsInChildren<TextMeshProUGUI>(true);
+			foreach (TextMeshProUGUI text in allTexts)
+			{
+				// Skip TextMeshProUGUI component of this GameObject (if any)
+				if (text.transform == transform)
+				{
+					continue;
+				}
+				textList.Add(text);
+			}
+			m_ChildTexts = textList.ToArray();
+
+			// Store original colors
+			if (m_ChildImages != null)
+			{
+				m_OriginalImageColors = new Color[m_ChildImages.Length];
+				for (int i = 0; i < m_ChildImages.Length; i++)
+				{
+					if (m_ChildImages[i] != null)
+					{
+						m_OriginalImageColors[i] = m_ChildImages[i].color;
+					}
+				}
+			}
+
+			if (m_ChildTexts != null)
+			{
+				m_OriginalTextColors = new Color[m_ChildTexts.Length];
+				for (int i = 0; i < m_ChildTexts.Length; i++)
+				{
+					if (m_ChildTexts[i] != null)
+					{
+						m_OriginalTextColors[i] = m_ChildTexts[i].color;
+					}
+				}
+			}
+		}
+
+		/// <summary>
+		/// Update color of all child Image components based on locked state
+		/// </summary>
+		/// <param name="isLocked">Whether the level is locked</param>
+		private void UpdateChildImagesColor(bool isLocked)
+		{
+			if (m_ChildImages == null || m_OriginalImageColors == null)
+			{
+				return;
+			}
+
+			for (int i = 0; i < m_ChildImages.Length; i++)
+			{
+				if (m_ChildImages[i] != null)
+				{
+					if (isLocked)
+					{
+						m_ChildImages[i].color = LOCKED_COLOR;
+					}
+					else
+					{
+						m_ChildImages[i].color = m_OriginalImageColors[i];
+					}
+				}
+			}
+		}
+
+		/// <summary>
+		/// Update color of all child TextMeshProUGUI components based on locked state
+		/// </summary>
+		/// <param name="isLocked">Whether the level is locked</param>
+		private void UpdateChildTextsColor(bool isLocked)
+		{
+			if (m_ChildTexts == null || m_OriginalTextColors == null)
+			{
+				return;
+			}
+
+			for (int i = 0; i < m_ChildTexts.Length; i++)
+			{
+				if (m_ChildTexts[i] != null)
+				{
+					if (isLocked)
+					{
+						m_ChildTexts[i].color = LOCKED_COLOR;
+					}
+					else
+					{
+						m_ChildTexts[i].color = m_OriginalTextColors[i];
+					}
+				}
+			}
 		}
 
 		/// <summary>
@@ -246,6 +465,17 @@ namespace TowerDefense.UI
 			{
 				m_Button.onClick.RemoveAllListeners();
 			}
+
+			// Kill all active tweens to prevent memory leaks
+			if (m_HoverTween != null && m_HoverTween.IsActive())
+			{
+				m_HoverTween.Kill();
+			}
+
+			if (m_ClickTween != null && m_ClickTween.IsActive())
+			{
+				m_ClickTween.Kill();
+			}
 		}
 
 		/// <summary>
@@ -255,6 +485,84 @@ namespace TowerDefense.UI
 		public void OnSelect(BaseEventData eventData)
 		{
 			m_MouseScroll.SelectChild(this);
+		}
+
+		/// <summary>
+		/// Implementation of IPointerEnterHandler - called when mouse enters the button
+		/// </summary>
+		/// <param name="eventData">Pointer event data</param>
+		public void OnPointerEnter(PointerEventData eventData)
+		{
+			if (m_Button != null && !m_Button.interactable)
+			{
+				// Don't animate if button is locked
+				return;
+			}
+
+			PlayHoverAnimation(true);
+		}
+
+		/// <summary>
+		/// Implementation of IPointerExitHandler - called when mouse leaves the button
+		/// </summary>
+		/// <param name="eventData">Pointer event data</param>
+		public void OnPointerExit(PointerEventData eventData)
+		{
+			PlayHoverAnimation(false);
+		}
+
+		/// <summary>
+		/// Plays hover animation (scale up on enter, scale back on exit)
+		/// </summary>
+		/// <param name="isEntering">True when entering, false when exiting</param>
+		private void PlayHoverAnimation(bool isEntering)
+		{
+			LazyLoad();
+
+			// Kill existing hover tween
+			if (m_HoverTween != null && m_HoverTween.IsActive())
+			{
+				m_HoverTween.Kill();
+			}
+
+			Vector3 targetScale = isEntering ? m_OriginalScale * hoverScale : m_OriginalScale;
+
+			m_HoverTween = transform.DOScale(targetScale, hoverDuration)
+				.SetEase(hoverEase);
+		}
+
+		/// <summary>
+		/// Plays click animation (scale down then bounce back)
+		/// </summary>
+		/// <param name="onComplete">Callback to execute after animation completes</param>
+		private void PlayClickAnimation(System.Action onComplete = null)
+		{
+			LazyLoad();
+
+			// Kill existing click tween
+			if (m_ClickTween != null && m_ClickTween.IsActive())
+			{
+				m_ClickTween.Kill();
+			}
+
+			// Create sequence: scale down then bounce back
+			Sequence clickSequence = DOTween.Sequence();
+			
+			// Scale down
+			clickSequence.Append(transform.DOScale(m_OriginalScale * clickScale, clickDuration * 0.5f)
+				.SetEase(Ease.InQuad));
+			
+			// Scale back to original (with bounce effect)
+			clickSequence.Append(transform.DOScale(m_OriginalScale, clickDuration)
+				.SetEase(clickEase));
+
+			// Execute callback after animation completes
+			if (onComplete != null)
+			{
+				clickSequence.OnComplete(() => onComplete());
+			}
+
+			m_ClickTween = clickSequence;
 		}
 	}
 }
