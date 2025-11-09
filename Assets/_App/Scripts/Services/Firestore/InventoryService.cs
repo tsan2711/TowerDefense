@@ -57,7 +57,59 @@ namespace Services.Firestore
                 if (snapshot.Exists)
                 {
                     cachedInventory = ParseInventoryData(snapshot.ToDictionary(), userId);
+                    
+                    // Đảm bảo ownedTowers không null
+                    if (cachedInventory.ownedTowers == null)
+                    {
+                        cachedInventory.ownedTowers = new List<InventoryItemData>();
+                        Debug.LogWarning($"[{GetServiceName()}] ownedTowers was null, initialized empty list");
+                    }
+                    
                     Debug.Log($"[{GetServiceName()}] Loaded inventory for user {userId}: {cachedInventory.ownedTowers.Count} towers");
+                    
+                    // Đảm bảo user luôn có Emp1 (nếu chưa có thì tự động thêm)
+                    try
+                    {
+                        await EnsureEmp1TowerAsync(userId);
+                    }
+                    catch (Exception empEx)
+                    {
+                        Debug.LogError($"[{GetServiceName()}] Error ensuring Emp1: {empEx.Message}");
+                        Debug.LogError($"[{GetServiceName()}] Stack trace: {empEx.StackTrace}");
+                    }
+                    
+                    // Đảm bảo ownedTowers vẫn không null sau khi thêm Emp1
+                    if (cachedInventory.ownedTowers == null)
+                    {
+                        cachedInventory.ownedTowers = new List<InventoryItemData>();
+                    }
+                    
+                    // Kiểm tra lại xem Emp1 có trong inventory không
+                    bool hasEmp1 = cachedInventory.HasTower("Emp1");
+                    Debug.Log($"[{GetServiceName()}] Final inventory count: {cachedInventory.ownedTowers.Count} towers, HasEmp1: {hasEmp1}");
+                    
+                    // Nếu vẫn chưa có Emp1, thêm trực tiếp vào cache (fallback)
+                    if (!hasEmp1 && cachedInventory.ownedTowers != null)
+                    {
+                        Debug.LogWarning($"[{GetServiceName()}] Emp1 still missing after EnsureEmp1TowerAsync, adding directly to cache...");
+                        InventoryItemData emp1Tower = new InventoryItemData("Emp1", 0, false);
+                        cachedInventory.AddTower(emp1Tower);
+                        Debug.Log($"[{GetServiceName()}] Added Emp1 directly to cache. New count: {cachedInventory.ownedTowers.Count}");
+                        
+                        // Try to save async (don't await to avoid blocking)
+                        _ = SaveInventoryAsync(cachedInventory).ContinueWith(task =>
+                        {
+                            if (task.Result)
+                            {
+                                Debug.Log($"[{GetServiceName()}] ✅ Saved Emp1 to Firestore after direct add");
+                            }
+                            else
+                            {
+                                Debug.LogError($"[{GetServiceName()}] ❌ Failed to save Emp1 to Firestore after direct add");
+                            }
+                        });
+                    }
+                    
                     OnInventoryLoaded?.Invoke(cachedInventory);
                     return cachedInventory;
                 }
@@ -319,9 +371,8 @@ namespace Services.Firestore
                 // Create new inventory with default towers
                 TowerInventoryData newInventory = new TowerInventoryData(userId);
                 
-                // Add default towers (you can customize this based on game design)
-                // For example: MachineGun1 as default tower
-                InventoryItemData defaultTower = new InventoryItemData("MachineGun1", 2, true); // type 2 = MachineGun
+                // Add default tower: Emp1 (Emp tower type = 0, isSelected = false để hiển thị trong inventory grid)
+                InventoryItemData defaultTower = new InventoryItemData("Emp1", 0, false); // type 0 = Emp
                 newInventory.AddTower(defaultTower);
 
                 cachedInventory = newInventory;
@@ -343,6 +394,76 @@ namespace Services.Firestore
                 return false;
             }
 #endif
+        }
+
+        #endregion
+
+        #region Ensure Default Tower
+
+        /// <summary>
+        /// Đảm bảo user luôn có Emp1 tower (tự động thêm nếu chưa có)
+        /// </summary>
+        private async Task EnsureEmp1TowerAsync(string userId)
+        {
+            if (cachedInventory == null || cachedInventory.userId != userId)
+            {
+                Debug.LogWarning($"[{GetServiceName()}] Cannot ensure Emp1: cachedInventory is null or userId mismatch");
+                return;
+            }
+
+            // Đảm bảo ownedTowers không null
+            if (cachedInventory.ownedTowers == null)
+            {
+                cachedInventory.ownedTowers = new List<InventoryItemData>();
+                Debug.LogWarning($"[{GetServiceName()}] ownedTowers was null in EnsureEmp1TowerAsync, initialized empty list");
+            }
+
+            const string EMP1_TOWER_NAME = "Emp1";
+            const int EMP_TOWER_TYPE = 0; // MainTower.Emp = 0
+
+            // Kiểm tra xem user đã có Emp1 chưa
+            if (!cachedInventory.HasTower(EMP1_TOWER_NAME))
+            {
+                Debug.Log($"[{GetServiceName()}] User {userId} chưa có Emp1, đang tự động thêm...");
+                
+                // Thêm Emp1 vào inventory (isSelected = false để hiển thị trong inventory grid)
+                InventoryItemData emp1Tower = new InventoryItemData(EMP1_TOWER_NAME, EMP_TOWER_TYPE, false);
+                
+                // Đảm bảo ownedTowers không null trước khi thêm
+                if (cachedInventory.ownedTowers == null)
+                {
+                    cachedInventory.ownedTowers = new List<InventoryItemData>();
+                }
+                
+                cachedInventory.AddTower(emp1Tower);
+                Debug.Log($"[{GetServiceName()}] Added Emp1 to inventory. Total towers: {cachedInventory.ownedTowers.Count}");
+
+                // Lưu vào Firestore
+                bool success = await SaveInventoryAsync(cachedInventory);
+                
+                if (success)
+                {
+                    Debug.Log($"[{GetServiceName()}] ✅ Đã tự động thêm và lưu Emp1 cho user {userId}. Inventory count: {cachedInventory.ownedTowers.Count}");
+                    // Không cần gọi OnInventoryLoaded ở đây vì đã được gọi trong LoadUserInventoryAsync
+                }
+                else
+                {
+                    Debug.LogError($"[{GetServiceName()}] ❌ Không thể lưu Emp1 cho user {userId}");
+                }
+            }
+            else
+            {
+                // User đã có Emp1, kiểm tra xem có cần unselect không (optional)
+                InventoryItemData existingEmp1 = cachedInventory.GetTower(EMP1_TOWER_NAME);
+                if (existingEmp1 != null && existingEmp1.isSelected)
+                {
+                    Debug.Log($"[{GetServiceName()}] User {userId} đã có Emp1 và đang selected. Giữ nguyên trạng thái.");
+                }
+                else
+                {
+                    Debug.Log($"[{GetServiceName()}] User {userId} đã có Emp1, không cần thêm");
+                }
+            }
         }
 
         #endregion

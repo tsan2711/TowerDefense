@@ -178,7 +178,6 @@ namespace Services.Firestore
                     { "isDefaultUnlocked", config.isDefaultUnlocked },
                     { "isPurchasable", config.isPurchasable },
                     { "rarity", config.rarity },
-                    { "iconName", config.iconName ?? "" },
                     { "sortOrder", config.sortOrder },
                     { "isActive", config.isActive },
                     { "tags", config.tags ?? new List<string>() },
@@ -339,9 +338,6 @@ namespace Services.Firestore
 
                 if (data.ContainsKey("rarity"))
                     config.rarity = Convert.ToInt32(data["rarity"]);
-
-                if (data.ContainsKey("iconName"))
-                    config.iconName = data["iconName"].ToString();
 
                 if (data.ContainsKey("sortOrder"))
                     config.sortOrder = Convert.ToInt32(data["sortOrder"]);
@@ -572,4 +568,5 @@ namespace Services.Firestore
         #endregion
     }
 }
+
 

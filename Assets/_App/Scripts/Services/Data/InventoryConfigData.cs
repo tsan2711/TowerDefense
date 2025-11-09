@@ -63,11 +63,6 @@ namespace Services.Data
         public int rarity;
 
         /// <summary>
-        /// Icon/sprite name for UI display
-        /// </summary>
-        public string iconName;
-
-        /// <summary>
         /// Sort order for display in UI
         /// </summary>
         public int sortOrder;
@@ -182,4 +177,5 @@ namespace Services.Data
         }
     }
 }
+
 

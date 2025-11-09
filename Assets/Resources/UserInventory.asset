@@ -18,6 +18,11 @@ MonoBehaviour:
     unlockedAt: 1762573750
     isSelected: 1
     towerType: 2
-    usageCount: 0
+    usageCount: 1
+  - towerName: Emp1
+    unlockedAt: 1762682916
+    isSelected: 1
+    towerType: 0
+    usageCount: 1
   maxSelectedTowers: 3
-  lastUpdated: 1762573750
+  lastUpdated: 1762682916

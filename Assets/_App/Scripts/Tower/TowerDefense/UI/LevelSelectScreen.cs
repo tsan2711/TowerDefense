@@ -2,6 +2,7 @@
 using Core.Game;
 using Core.UI;
 using TowerDefense.Game;
+using Services.UI;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -32,6 +33,11 @@ namespace TowerDefense.UI
 
 		public MouseScroll mouseScroll;
 
+		/// <summary>
+		/// Reference to the UI Menu Manager to handle back navigation
+		/// </summary>
+		protected UIMenuManager m_UIMenuManager;
+
 		public Animation cameraAnimator;
 
 		public string enterCameraAnim;
@@ -50,6 +56,15 @@ namespace TowerDefense.UI
 		/// </summary>
 		protected virtual void Start()
 		{
+			// Find UIMenuManager in scene
+			m_UIMenuManager = FindObjectOfType<UIMenuManager>();
+			
+			// Setup back button click event
+			if (backButton != null)
+			{
+				backButton.onClick.AddListener(OnBackButtonClicked);
+			}
+
 			if (GameManager.instance == null)
 			{
 				return;
@@ -85,6 +100,25 @@ namespace TowerDefense.UI
 			SetUpNavigation(m_Buttons[m_Buttons.Count - 1], m_Buttons[m_Buttons.Count - 2], null);
 			
 			mouseScroll.SetHasRightBuffer(rightBuffer != null);
+		}
+
+		/// <summary>
+		/// Handle back button click to return to main menu
+		/// </summary>
+		protected virtual void OnBackButtonClicked()
+		{
+			Debug.Log("[LevelSelectScreen] Back button clicked");
+			
+			if (m_UIMenuManager != null)
+			{
+				Debug.Log("[LevelSelectScreen] Calling ReturnToMainMenu()");
+				// ReturnToMainMenu() will handle hiding level select and showing main menu
+				m_UIMenuManager.ReturnToMainMenu();
+			}
+			else
+			{
+				Debug.LogWarning("[LevelSelectScreen] UIMenuManager is null! Cannot go back.");
+			}
 		}
 
 		/// <summary>
@@ -141,6 +175,19 @@ namespace TowerDefense.UI
 			navigation.selectOnLeft = left;
 			navigation.selectOnRight = right;
 			selectable.navigation = navigation;
+		}
+
+		/// <summary>
+		/// Cleanup event listeners when destroyed
+		/// </summary>
+		protected override void OnDestroy()
+		{
+			base.OnDestroy();
+			
+			if (backButton != null)
+			{
+				backButton.onClick.RemoveListener(OnBackButtonClicked);
+			}
 		}
 		
 	}

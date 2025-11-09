@@ -23,7 +23,6 @@ MonoBehaviour:
     isDefaultUnlocked: 0
     isPurchasable: 1
     rarity: 1
-    iconName: 
     sortOrder: 9
     isActive: 1
     tags: []
@@ -37,7 +36,6 @@ MonoBehaviour:
     isDefaultUnlocked: 0
     isPurchasable: 1
     rarity: 2
-    iconName: 
     sortOrder: 10
     isActive: 1
     tags: []
@@ -51,7 +49,6 @@ MonoBehaviour:
     isDefaultUnlocked: 0
     isPurchasable: 1
     rarity: 3
-    iconName: 
     sortOrder: 11
     isActive: 1
     tags: []
@@ -65,7 +62,6 @@ MonoBehaviour:
     isDefaultUnlocked: 0
     isPurchasable: 1
     rarity: 1
-    iconName: 
     sortOrder: 3
     isActive: 1
     tags: []
@@ -79,7 +75,6 @@ MonoBehaviour:
     isDefaultUnlocked: 0
     isPurchasable: 1
     rarity: 2
-    iconName: 
     sortOrder: 4
     isActive: 1
     tags: []
@@ -93,7 +88,6 @@ MonoBehaviour:
     isDefaultUnlocked: 0
     isPurchasable: 1
     rarity: 3
-    iconName: 
     sortOrder: 5
     isActive: 1
     tags: []
@@ -107,7 +101,6 @@ MonoBehaviour:
     isDefaultUnlocked: 1
     isPurchasable: 0
     rarity: 0
-    iconName: 
     sortOrder: 0
     isActive: 1
     tags: []
@@ -121,7 +114,6 @@ MonoBehaviour:
     isDefaultUnlocked: 0
     isPurchasable: 1
     rarity: 1
-    iconName: 
     sortOrder: 1
     isActive: 1
     tags: []
@@ -135,7 +127,6 @@ MonoBehaviour:
     isDefaultUnlocked: 0
     isPurchasable: 1
     rarity: 2
-    iconName: 
     sortOrder: 2
     isActive: 1
     tags: []
@@ -149,7 +140,6 @@ MonoBehaviour:
     isDefaultUnlocked: 0
     isPurchasable: 1
     rarity: 2
-    iconName: 
     sortOrder: 12
     isActive: 1
     tags: []
@@ -163,7 +153,6 @@ MonoBehaviour:
     isDefaultUnlocked: 0
     isPurchasable: 1
     rarity: 2
-    iconName: 
     sortOrder: 13
     isActive: 1
     tags: []
@@ -177,7 +166,6 @@ MonoBehaviour:
     isDefaultUnlocked: 0
     isPurchasable: 1
     rarity: 3
-    iconName: 
     sortOrder: 14
     isActive: 1
     tags: []
@@ -191,7 +179,6 @@ MonoBehaviour:
     isDefaultUnlocked: 0
     isPurchasable: 1
     rarity: 1
-    iconName: 
     sortOrder: 6
     isActive: 1
     tags: []
@@ -205,7 +192,6 @@ MonoBehaviour:
     isDefaultUnlocked: 0
     isPurchasable: 1
     rarity: 2
-    iconName: 
     sortOrder: 7
     isActive: 1
     tags: []
@@ -219,7 +205,6 @@ MonoBehaviour:
     isDefaultUnlocked: 0
     isPurchasable: 1
     rarity: 3
-    iconName: 
     sortOrder: 8
     isActive: 1
     tags: []
@@ -233,8 +218,6 @@ MonoBehaviour:
     isDefaultUnlocked: 0
     isPurchasable: 1
     rarity: 3
-    iconName: 
     sortOrder: 15
     isActive: 1
     tags: []
-  spriteMappings: []

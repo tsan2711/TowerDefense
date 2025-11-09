@@ -21,13 +21,12 @@ namespace TowerDefense.UI.Inventory
     public class InventoryUIManager : MonoBehaviour
     {
         [Header("UI References")]
-        [SerializeField] private Transform selectedSlotsContainer;
+        [SerializeField] private TowerInventorySlot[] selectedSlots; // Mảng slots đã được assign sẵn trong Inspector
         [SerializeField] private Transform inventoryGridContainer;
         [SerializeField] private GameObject slotPrefab;
         [SerializeField] private Button closeButton;
         
         [Header("Layout Settings")]
-        [SerializeField] private int maxSelectedSlots = 3;
         [SerializeField] private float slotSpacing = 10f;
         [SerializeField] private GridLayoutGroup inventoryGrid;
         
@@ -47,7 +46,6 @@ namespace TowerDefense.UI.Inventory
         private IAuthService authService;
         
         // Slots
-        private List<TowerInventorySlot> selectedSlots = new List<TowerInventorySlot>();
         private List<TowerInventorySlot> inventorySlots = new List<TowerInventorySlot>();
         
         // State
@@ -113,49 +111,30 @@ namespace TowerDefense.UI.Inventory
         }
         
         /// <summary>
-        /// Initialize UI with empty slots
+        /// Initialize UI with assigned slots
         /// </summary>
         private void InitializeUI()
         {
-            // Create selected slots (3 slots)
-            CreateSelectedSlots();
+            // Setup selected slots (đã được assign sẵn trong Inspector)
+            if (selectedSlots != null && selectedSlots.Length > 0)
+            {
+                foreach (var slot in selectedSlots)
+                {
+                    if (slot != null)
+                    {
+                        slot.Initialize(null, null, false);
+                        slot.OnSlotClicked += OnSelectedSlotClicked;
+                    }
+                }
+                Debug.Log($"[InventoryUIManager] Initialized {selectedSlots.Length} selected slots from Inspector");
+            }
+            else
+            {
+                Debug.LogWarning("[InventoryUIManager] No selected slots assigned in Inspector!");
+            }
             
             // Load and display inventory
             LoadInventoryData();
-        }
-        
-        /// <summary>
-        /// Create empty selected tower slots
-        /// </summary>
-        private void CreateSelectedSlots()
-        {
-            if (selectedSlotsContainer == null || slotPrefab == null)
-            {
-                Debug.LogError("[InventoryUIManager] Missing references for selected slots!");
-                return;
-            }
-            
-            // Clear existing
-            foreach (var slot in selectedSlots)
-            {
-                if (slot != null)
-                    Destroy(slot.gameObject);
-            }
-            selectedSlots.Clear();
-            
-            // Create new slots
-            for (int i = 0; i < maxSelectedSlots; i++)
-            {
-                GameObject slotObj = Instantiate(slotPrefab, selectedSlotsContainer);
-                TowerInventorySlot slot = slotObj.GetComponent<TowerInventorySlot>();
-                
-                if (slot != null)
-                {
-                    slot.Initialize(null, null, false);
-                    slot.OnSlotClicked += OnSelectedSlotClicked;
-                    selectedSlots.Add(slot);
-                }
-            }
         }
         
         /// <summary>
@@ -169,14 +148,20 @@ namespace TowerDefense.UI.Inventory
                 return;
             }
             
-            // Try to get cached first
-            TowerInventoryData inventoryData = inventoryService.GetCachedInventory();
+            TowerInventoryData inventoryData = null;
             
-            // If no cache, load from backend
-            if (inventoryData == null && !string.IsNullOrEmpty(currentUserId))
+            // Luôn load từ backend để đảm bảo Emp1 được kiểm tra và thêm (nếu chưa có)
+            if (!string.IsNullOrEmpty(currentUserId))
             {
-                Debug.Log("[InventoryUIManager] Loading inventory from backend...");
+                Debug.Log("[InventoryUIManager] Loading inventory from backend (to ensure Emp1 is added if missing)...");
                 inventoryData = await inventoryService.LoadUserInventoryAsync(currentUserId);
+            }
+            
+            // Fallback to cache if backend load failed
+            if (inventoryData == null)
+            {
+                Debug.LogWarning("[InventoryUIManager] Backend load failed, trying cached inventory...");
+                inventoryData = inventoryService.GetCachedInventory();
             }
             
             // Fallback to ScriptableObject if service fails
@@ -188,6 +173,12 @@ namespace TowerDefense.UI.Inventory
             
             if (inventoryData != null)
             {
+                // Kiểm tra xem có Emp1 không, nếu không thì thêm
+                if (inventoryData.ownedTowers != null && !inventoryData.ownedTowers.Any(t => t != null && t.towerName == "Emp1"))
+                {
+                    Debug.LogWarning("[InventoryUIManager] Emp1 not found in inventory, will be added on next backend sync");
+                }
+                
                 RefreshInventoryDisplay(inventoryData);
             }
             else
@@ -204,13 +195,25 @@ namespace TowerDefense.UI.Inventory
             if (inventoryData == null || libraryContainer == null)
                 return;
             
-            // Clear inventory slots
-            foreach (var slot in inventorySlots)
+            // Debug: Log all towers in inventory
+            if (inventoryData.ownedTowers != null)
             {
-                if (slot != null)
-                    Destroy(slot.gameObject);
+                Debug.Log($"[InventoryUIManager] Total towers in inventory: {inventoryData.ownedTowers.Count}");
+                foreach (var tower in inventoryData.ownedTowers)
+                {
+                    if (tower != null)
+                    {
+                        Debug.Log($"[InventoryUIManager] Tower: {tower.towerName}, Selected: {tower.isSelected}, Type: {tower.towerType}");
+                    }
+                }
             }
-            inventorySlots.Clear();
+            else
+            {
+                Debug.LogWarning("[InventoryUIManager] ownedTowers is null!");
+            }
+            
+            // Populate sprites for all inventory items from Tower library
+            PopulateSpritesForInventoryItems(inventoryData.ownedTowers);
             
             // Get selected towers
             List<InventoryItemData> selectedTowers = inventoryData.ownedTowers?
@@ -222,24 +225,56 @@ namespace TowerDefense.UI.Inventory
                 .Where(t => t != null && !t.isSelected)
                 .ToList() ?? new List<InventoryItemData>();
             
-            // Update selected slots
-            for (int i = 0; i < maxSelectedSlots; i++)
+            Debug.Log($"[InventoryUIManager] Selected towers: {selectedTowers.Count}, Unselected towers: {unselectedTowers.Count}");
+            
+            // Update selected slots (duyệt qua mảng đã assign sẵn và đổ dữ liệu vào)
+            if (selectedSlots != null && selectedSlots.Length > 0)
             {
-                if (i < selectedSlots.Count)
+                for (int i = 0; i < selectedSlots.Length; i++)
                 {
-                    if (i < selectedTowers.Count)
+                    if (selectedSlots[i] != null)
                     {
-                        // Get tower data from library
-                        Tower towerData = GetTowerFromLibrary(selectedTowers[i].towerName);
-                        selectedSlots[i].Initialize(towerData, selectedTowers[i], true);
-                        selectedSlots[i].AnimateAppearance();
-                    }
-                    else
-                    {
-                        selectedSlots[i].SetEmpty();
+                        if (i < selectedTowers.Count)
+                        {
+                            // Get tower data from library
+                            Tower towerData = GetTowerFromLibrary(selectedTowers[i].towerName);
+                            if (towerData == null)
+                            {
+                                Debug.LogError($"[InventoryUIManager] RefreshInventoryDisplay: Cannot find tower '{selectedTowers[i].towerName}' for selected slot {i}, setting empty");
+                                selectedSlots[i].SetEmpty();
+                            }
+                            else
+                            {
+                                // Ensure sprite is populated before initializing slot
+                                if (selectedTowers[i].sprite == null)
+                                {
+                                    PopulateSpriteForInventoryItem(selectedTowers[i], towerData);
+                                }
+                                selectedSlots[i].Initialize(towerData, selectedTowers[i], true);
+                                // Update sprite to ensure it's refreshed (only if tower exists)
+                                selectedSlots[i].UpdateSprite();
+                                selectedSlots[i].AnimateAppearance();
+                            }
+                        }
+                        else
+                        {
+                            selectedSlots[i].SetEmpty();
+                        }
                     }
                 }
             }
+            else
+            {
+                Debug.LogWarning("[InventoryUIManager] Selected slots array is null or empty!");
+            }
+            
+            // Clear inventory slots (these are recreated, so sprites will be set during Initialize)
+            foreach (var slot in inventorySlots)
+            {
+                if (slot != null)
+                    Destroy(slot.gameObject);
+            }
+            inventorySlots.Clear();
             
             // Create inventory slots
             foreach (var item in unselectedTowers)
@@ -252,10 +287,23 @@ namespace TowerDefense.UI.Inventory
                     if (slot != null)
                     {
                         Tower towerData = GetTowerFromLibrary(item.towerName);
-                        slot.Initialize(towerData, item, false);
-                        slot.OnSlotClicked += OnInventorySlotClicked;
-                        slot.AnimateAppearance();
-                        inventorySlots.Add(slot);
+                        if (towerData == null)
+                        {
+                            Debug.LogError($"[InventoryUIManager] RefreshInventoryDisplay: Cannot find tower '{item.towerName}' for inventory slot, skipping");
+                            Destroy(slotObj);
+                        }
+                        else
+                        {
+                            // Ensure sprite is populated before initializing slot
+                            if (item.sprite == null)
+                            {
+                                PopulateSpriteForInventoryItem(item, towerData);
+                            }
+                            slot.Initialize(towerData, item, false);
+                            slot.OnSlotClicked += OnInventorySlotClicked;
+                            slot.AnimateAppearance();
+                            inventorySlots.Add(slot);
+                        }
                     }
                 }
             }
@@ -264,22 +312,277 @@ namespace TowerDefense.UI.Inventory
         }
         
         /// <summary>
+        /// Update sprites for all existing slots (useful when sprites need to be refreshed without recreating slots)
+        /// </summary>
+        public void UpdateAllSlotSprites()
+        {
+            // Update selected slots sprites
+            if (selectedSlots != null)
+            {
+                foreach (var slot in selectedSlots)
+                {
+                    if (slot != null && !slot.IsEmpty)
+                    {
+                        // Ensure sprite is populated in inventory item
+                        if (slot.InventoryItem != null && slot.InventoryItem.sprite == null && slot.TowerData != null)
+                        {
+                            PopulateSpriteForInventoryItem(slot.InventoryItem, slot.TowerData);
+                        }
+                        slot.UpdateSprite();
+                    }
+                }
+            }
+            
+            // Update inventory slots sprites
+            foreach (var slot in inventorySlots)
+            {
+                if (slot != null && !slot.IsEmpty)
+                {
+                    // Ensure sprite is populated in inventory item
+                    if (slot.InventoryItem != null && slot.InventoryItem.sprite == null && slot.TowerData != null)
+                    {
+                        PopulateSpriteForInventoryItem(slot.InventoryItem, slot.TowerData);
+                    }
+                    slot.UpdateSprite();
+                }
+            }
+        }
+        
+        /// <summary>
         /// Get tower data from library by name
+        /// Tries current level library first, then searches all libraries as fallback
         /// </summary>
         private Tower GetTowerFromLibrary(string towerName)
         {
-            if (libraryContainer == null || string.IsNullOrEmpty(towerName) || string.IsNullOrEmpty(currentLevelId))
-                return null;
-            
-            TowerLibrary library = libraryContainer.GetLibrary(currentLevelId);
-            if (library == null)
+            if (libraryContainer == null)
             {
-                Debug.LogWarning($"[InventoryUIManager] Library not found for levelId: {currentLevelId}");
+                Debug.LogError($"[InventoryUIManager] GetTowerFromLibrary: libraryContainer is NULL!");
                 return null;
             }
             
-            library.TryGetValue(towerName, out Tower tower);
-            return tower;
+            if (string.IsNullOrEmpty(towerName))
+            {
+                Debug.LogError($"[InventoryUIManager] GetTowerFromLibrary: towerName is empty!");
+                return null;
+            }
+            
+            // Try current level library first
+            if (!string.IsNullOrEmpty(currentLevelId))
+            {
+                TowerLibrary library = libraryContainer.GetLibrary(currentLevelId);
+                if (library != null)
+                {
+                    if (library.TryGetValue(towerName, out Tower tower))
+                    {
+                        Debug.Log($"[InventoryUIManager] GetTowerFromLibrary: Found '{towerName}' in current library levelId={currentLevelId}");
+                        return tower;
+                    }
+                    else
+                    {
+                        // Log available towers in current library for debugging
+                        Debug.LogWarning($"[InventoryUIManager] GetTowerFromLibrary: '{towerName}' not found in current library levelId={currentLevelId}");
+                        if (library.configurations != null)
+                        {
+                            string availableTowers = string.Join(", ", library.configurations.Select(t => t?.towerName ?? "NULL"));
+                            Debug.Log($"[InventoryUIManager] Available towers in library '{currentLevelId}': {availableTowers}");
+                        }
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning($"[InventoryUIManager] GetTowerFromLibrary: Library not found for levelId: {currentLevelId}");
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"[InventoryUIManager] GetTowerFromLibrary: currentLevelId is empty, searching all libraries...");
+            }
+            
+            // Fallback: Search all libraries
+            List<TowerLibrary> allLibraries = libraryContainer.GetAllLibraries();
+            if (allLibraries != null && allLibraries.Count > 0)
+            {
+                foreach (var library in allLibraries)
+                {
+                    if (library != null && library.TryGetValue(towerName, out Tower tower))
+                    {
+                        // Find which levelId this library belongs to
+                        string foundLevelId = "unknown";
+                        var allLevelIds = libraryContainer.GetAllLevelIds();
+                        foreach (var levelId in allLevelIds)
+                        {
+                            if (libraryContainer.GetLibrary(levelId) == library)
+                            {
+                                foundLevelId = levelId;
+                                break;
+                            }
+                        }
+                        Debug.Log($"[InventoryUIManager] GetTowerFromLibrary: Found '{towerName}' in fallback library levelId={foundLevelId}");
+                        return tower;
+                    }
+                }
+            }
+            
+            Debug.LogError($"[InventoryUIManager] GetTowerFromLibrary: '{towerName}' not found in ANY library! Total libraries: {allLibraries?.Count ?? 0}");
+            return null;
+        }
+        
+        /// <summary>
+        /// Populate sprite for a single inventory item from Tower library
+        /// </summary>
+        private void PopulateSpriteForInventoryItem(InventoryItemData item, Tower tower = null)
+        {
+            if (item == null || string.IsNullOrEmpty(item.towerName))
+            {
+                Debug.LogError($"[InventoryUIManager] PopulateSpriteForInventoryItem: item is NULL or towerName is empty!");
+                return;
+            }
+            
+            // Skip if sprite already populated
+            if (item.sprite != null)
+            {
+                Debug.Log($"[InventoryUIManager] PopulateSpriteForInventoryItem: Sprite already populated for {item.towerName}");
+                return;
+            }
+            
+            // Use provided tower or get from library
+            if (tower == null)
+            {
+                if (libraryContainer == null)
+                {
+                    Debug.LogError($"[InventoryUIManager] PopulateSpriteForInventoryItem: libraryContainer is NULL for {item.towerName}!");
+                    return;
+                }
+                
+                if (string.IsNullOrEmpty(currentLevelId))
+                {
+                    Debug.LogError($"[InventoryUIManager] PopulateSpriteForInventoryItem: currentLevelId is empty for {item.towerName}!");
+                    return;
+                }
+                
+                TowerLibrary library = libraryContainer.GetLibrary(currentLevelId);
+                if (library == null)
+                {
+                    Debug.LogError($"[InventoryUIManager] PopulateSpriteForInventoryItem: Library not found for levelId={currentLevelId}, towerName={item.towerName}!");
+                    return;
+                }
+                
+                if (!library.TryGetValue(item.towerName, out tower))
+                {
+                    Debug.LogError($"[InventoryUIManager] PopulateSpriteForInventoryItem: Tower '{item.towerName}' not found in library for levelId={currentLevelId}!");
+                    return;
+                }
+            }
+            
+            // Get sprite from tower's first level
+            if (tower.levels == null || tower.levels.Length == 0)
+            {
+                Debug.LogError($"[InventoryUIManager] PopulateSpriteForInventoryItem: Tower {item.towerName} has no levels!");
+                return;
+            }
+            
+            if (tower.levels[0].levelData == null)
+            {
+                Debug.LogError($"[InventoryUIManager] PopulateSpriteForInventoryItem: Tower {item.towerName}.levels[0].levelData is NULL!");
+                return;
+            }
+            
+            if (tower.levels[0].levelData.icon == null)
+            {
+                Debug.LogError($"[InventoryUIManager] PopulateSpriteForInventoryItem: Tower {item.towerName}.levels[0].levelData.icon is NULL!");
+                return;
+            }
+            
+            item.sprite = tower.levels[0].levelData.icon;
+            Debug.Log($"[InventoryUIManager] PopulateSpriteForInventoryItem: Successfully populated sprite for {item.towerName}");
+        }
+        
+        /// <summary>
+        /// Populate sprite for inventory items from Tower library
+        /// Uses GetTowerFromLibrary which has fallback to search all libraries
+        /// </summary>
+        private void PopulateSpritesForInventoryItems(List<InventoryItemData> items)
+        {
+            if (items == null)
+            {
+                Debug.LogError($"[InventoryUIManager] PopulateSpritesForInventoryItems: items list is NULL!");
+                return;
+            }
+            
+            if (libraryContainer == null)
+            {
+                Debug.LogError($"[InventoryUIManager] PopulateSpritesForInventoryItems: libraryContainer is NULL!");
+                return;
+            }
+            
+            // Log current state
+            string levelIdInfo = string.IsNullOrEmpty(currentLevelId) ? "NOT SET" : currentLevelId;
+            Debug.Log($"[InventoryUIManager] PopulateSpritesForInventoryItems: Processing {items.Count} items, currentLevelId={levelIdInfo}");
+            
+            // Log all available level IDs
+            var allLevelIds = libraryContainer.GetAllLevelIds();
+            if (allLevelIds != null && allLevelIds.Count > 0)
+            {
+                Debug.Log($"[InventoryUIManager] PopulateSpritesForInventoryItems: Available levelIds: {string.Join(", ", allLevelIds)}");
+            }
+            else
+            {
+                Debug.LogWarning($"[InventoryUIManager] PopulateSpritesForInventoryItems: No levelIds found in libraryContainer!");
+            }
+            
+            int successCount = 0;
+            int failCount = 0;
+            
+            foreach (var item in items)
+            {
+                if (item == null || string.IsNullOrEmpty(item.towerName))
+                {
+                    Debug.LogError($"[InventoryUIManager] PopulateSpritesForInventoryItems: Skipping NULL item or empty towerName");
+                    failCount++;
+                    continue;
+                }
+                
+                // Skip if sprite already populated
+                if (item.sprite != null)
+                {
+                    Debug.Log($"[InventoryUIManager] PopulateSpritesForInventoryItems: Sprite already populated for {item.towerName}");
+                    successCount++;
+                    continue;
+                }
+                
+                // Get tower from library (with fallback to all libraries)
+                Tower tower = GetTowerFromLibrary(item.towerName);
+                if (tower != null)
+                {
+                    // Get sprite from tower's first level
+                    if (tower.levels != null && tower.levels.Length > 0 && tower.levels[0].levelData != null)
+                    {
+                        if (tower.levels[0].levelData.icon != null)
+                        {
+                            item.sprite = tower.levels[0].levelData.icon;
+                            Debug.Log($"[InventoryUIManager] PopulateSpritesForInventoryItems: Successfully populated sprite for {item.towerName}");
+                            successCount++;
+                        }
+                        else
+                        {
+                            Debug.LogError($"[InventoryUIManager] PopulateSpritesForInventoryItems: Tower {item.towerName}.levels[0].levelData.icon is NULL!");
+                            failCount++;
+                        }
+                    }
+                    else
+                    {
+                        Debug.LogError($"[InventoryUIManager] PopulateSpritesForInventoryItems: Tower {item.towerName} has no levels or levelData is NULL!");
+                        failCount++;
+                    }
+                }
+                else
+                {
+                    Debug.LogError($"[InventoryUIManager] PopulateSpritesForInventoryItems: Tower '{item.towerName}' not found in ANY library!");
+                    failCount++;
+                }
+            }
+            
+            Debug.Log($"[InventoryUIManager] PopulateSpritesForInventoryItems: Completed - Success: {successCount}, Failed: {failCount}");
         }
 
         /// <summary>
@@ -358,6 +661,11 @@ namespace TowerDefense.UI.Inventory
                 if (existingItem != null)
                 {
                     // Keep existing item (preserve selection state, usage count, etc.)
+                    // Populate sprite if not already set
+                    if (existingItem.sprite == null && tower.levels != null && tower.levels.Length > 0 && tower.levels[0].levelData != null)
+                    {
+                        existingItem.sprite = tower.levels[0].levelData.icon;
+                    }
                     inventoryItems.Add(existingItem);
                 }
                 else
@@ -371,6 +679,13 @@ namespace TowerDefense.UI.Inventory
                         unlockedAt = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                         usageCount = 0
                     };
+                    
+                    // Get sprite from tower's first level
+                    if (tower.levels != null && tower.levels.Length > 0 && tower.levels[0].levelData != null)
+                    {
+                        newItem.sprite = tower.levels[0].levelData.icon;
+                    }
+                    
                     inventoryItems.Add(newItem);
                 }
             }
@@ -410,6 +725,11 @@ namespace TowerDefense.UI.Inventory
                 
                 if (existingItem != null)
                 {
+                    // Populate sprite if not already set
+                    if (existingItem.sprite == null && tower.levels != null && tower.levels.Length > 0 && tower.levels[0].levelData != null)
+                    {
+                        existingItem.sprite = tower.levels[0].levelData.icon;
+                    }
                     inventoryItems.Add(existingItem);
                 }
                 else
@@ -422,6 +742,13 @@ namespace TowerDefense.UI.Inventory
                         unlockedAt = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                         usageCount = 0
                     };
+                    
+                    // Get sprite from tower's first level
+                    if (tower.levels != null && tower.levels.Length > 0 && tower.levels[0].levelData != null)
+                    {
+                        newItem.sprite = tower.levels[0].levelData.icon;
+                    }
+                    
                     inventoryItems.Add(newItem);
                 }
             }
@@ -536,7 +863,18 @@ namespace TowerDefense.UI.Inventory
             if (currentSelectedSlot == null)
             {
                 // Check if there's an empty selected slot
-                TowerInventorySlot emptySlot = selectedSlots.FirstOrDefault(s => s.IsEmpty);
+                TowerInventorySlot emptySlot = null;
+                if (selectedSlots != null)
+                {
+                    foreach (var s in selectedSlots)
+                    {
+                        if (s != null && s.IsEmpty)
+                        {
+                            emptySlot = s;
+                            break;
+                        }
+                    }
+                }
                 
                 if (emptySlot != null)
                 {
@@ -692,13 +1030,34 @@ namespace TowerDefense.UI.Inventory
                 yield break;
             }
             
-            // Collect selected tower names
-            List<string> selectedTowerNames = new List<string>();
-            foreach (var slot in selectedSlots)
+            // Get current cached inventory to determine actual selected towers
+            TowerInventoryData cachedInventory = inventoryService.GetCachedInventory();
+            if (cachedInventory == null)
             {
-                if (!slot.IsEmpty && slot.TowerData != null)
+                Debug.LogWarning("[InventoryUIManager] Cannot update backend: no cached inventory");
+                yield break;
+            }
+            
+            // Collect selected tower names from selectedSlots UI
+            List<string> selectedTowerNames = new List<string>();
+            if (selectedSlots != null)
+            {
+                foreach (var slot in selectedSlots)
                 {
-                    selectedTowerNames.Add(slot.TowerData.towerName);
+                    if (slot != null && !slot.IsEmpty && slot.TowerData != null)
+                    {
+                        selectedTowerNames.Add(slot.TowerData.towerName);
+                    }
+                }
+            }
+            
+            // Update cached inventory's selected state to match UI BEFORE calling backend
+            // This ensures validation will pass
+            if (cachedInventory.ownedTowers != null)
+            {
+                foreach (var tower in cachedInventory.ownedTowers)
+                {
+                    tower.isSelected = selectedTowerNames.Contains(tower.towerName);
                 }
             }
             

@@ -95,12 +95,21 @@ namespace TowerDefense.UI.Inventory
             isEmpty = (tower == null);
             isSelected = selected;
             
+            if (towerIcon == null)
+            {
+                Debug.LogError($"[TowerInventorySlot] Initialize: towerIcon is NULL! Cannot set sprite.");
+            }
+            
             if (isEmpty)
             {
+                Debug.Log($"[TowerInventorySlot] Initialize: Slot is empty, setting empty state");
                 SetEmpty();
             }
             else
             {
+                string towerName = tower?.towerName ?? "NULL";
+                string itemName = item?.towerName ?? "NULL";
+                Debug.Log($"[TowerInventorySlot] Initialize: Initializing slot with tower={towerName}, item={itemName}, selected={selected}");
                 SetTowerVisuals();
                 UpdateSelectionState(false); // No animation on init
             }
@@ -133,22 +142,139 @@ namespace TowerDefense.UI.Inventory
         }
         
         /// <summary>
-        /// Set tower icon from tower data
+        /// Set tower icon from inventory item data
         /// </summary>
         private void SetTowerVisuals()
         {
-            if (towerIcon != null && towerData != null)
+            if (towerIcon == null)
             {
-                // Get icon from first level of tower
-                if (towerData.levels != null && towerData.levels.Length > 0)
+                Debug.LogError($"[TowerInventorySlot] SetTowerVisuals: towerIcon is NULL!");
+                return;
+            }
+            
+            // Priority: Use sprite from InventoryItemData first, fallback to Tower data
+            Sprite icon = null;
+            
+            if (inventoryItem != null && inventoryItem.sprite != null)
+            {
+                icon = inventoryItem.sprite;
+                Debug.Log($"[TowerInventorySlot] SetTowerVisuals: Using sprite from InventoryItemData for {inventoryItem.towerName}");
+            }
+            else if (towerData != null && towerData.levels != null && towerData.levels.Length > 0)
+            {
+                // Fallback: Get icon from first level of tower
+                if (towerData.levels[0].levelData != null)
                 {
-                    Sprite icon = towerData.levels[0].levelData.icon;
-                    if (icon != null)
+                    icon = towerData.levels[0].levelData.icon;
+                    
+                    if (icon == null)
                     {
-                        towerIcon.sprite = icon;
-                        towerIcon.enabled = true;
+                        Debug.LogError($"[TowerInventorySlot] SetTowerVisuals: towerData.levels[0].levelData.icon is NULL for tower {towerData.towerName}!");
+                    }
+                    else
+                    {
+                        Debug.Log($"[TowerInventorySlot] SetTowerVisuals: Using sprite from Tower.levels[0].levelData.icon for {towerData.towerName}");
+                    }
+                    
+                    // Also update inventory item sprite if it's null
+                    if (inventoryItem != null && inventoryItem.sprite == null)
+                    {
+                        inventoryItem.sprite = icon;
                     }
                 }
+                else
+                {
+                    Debug.LogError($"[TowerInventorySlot] SetTowerVisuals: towerData.levels[0].levelData is NULL for tower {towerData.towerName}!");
+                }
+            }
+            else
+            {
+                string towerName = towerData != null ? towerData.towerName : "NULL";
+                Debug.LogError($"[TowerInventorySlot] SetTowerVisuals: Cannot get sprite! towerData={towerData != null}, levels={towerData?.levels != null}, levelsLength={towerData?.levels?.Length ?? 0}, towerName={towerName}");
+            }
+            
+            if (icon != null)
+            {
+                towerIcon.sprite = icon;
+                towerIcon.enabled = true;
+                Debug.Log($"[TowerInventorySlot] SetTowerVisuals: Successfully set sprite for {towerData?.towerName ?? "unknown"}");
+            }
+            else
+            {
+                towerIcon.enabled = false;
+                Debug.LogError($"[TowerInventorySlot] SetTowerVisuals: icon is NULL, disabling towerIcon!");
+            }
+        }
+        
+        /// <summary>
+        /// Update sprite for this slot from inventory item data or tower data
+        /// </summary>
+        public void UpdateSprite()
+        {
+            if (isEmpty)
+            {
+                // This is expected if slot is empty, don't log as error
+                Debug.Log($"[TowerInventorySlot] UpdateSprite: Slot is empty (expected behavior)");
+                return;
+            }
+            
+            if (towerIcon == null)
+            {
+                Debug.LogError($"[TowerInventorySlot] UpdateSprite: towerIcon is NULL!");
+                return;
+            }
+            
+            // Priority: Use sprite from InventoryItemData first, fallback to Tower data
+            Sprite icon = null;
+            
+            if (inventoryItem != null && inventoryItem.sprite != null)
+            {
+                icon = inventoryItem.sprite;
+                Debug.Log($"[TowerInventorySlot] UpdateSprite: Using sprite from InventoryItemData for {inventoryItem.towerName}");
+            }
+            else if (towerData != null && towerData.levels != null && towerData.levels.Length > 0)
+            {
+                // Fallback: Get icon from first level of tower
+                if (towerData.levels[0].levelData != null)
+                {
+                    icon = towerData.levels[0].levelData.icon;
+                    
+                    if (icon == null)
+                    {
+                        Debug.LogError($"[TowerInventorySlot] UpdateSprite: towerData.levels[0].levelData.icon is NULL for tower {towerData.towerName}!");
+                    }
+                    else
+                    {
+                        Debug.Log($"[TowerInventorySlot] UpdateSprite: Using sprite from Tower.levels[0].levelData.icon for {towerData.towerName}");
+                    }
+                    
+                    // Also update inventory item sprite if it's null
+                    if (inventoryItem != null && inventoryItem.sprite == null)
+                    {
+                        inventoryItem.sprite = icon;
+                    }
+                }
+                else
+                {
+                    Debug.LogError($"[TowerInventorySlot] UpdateSprite: towerData.levels[0].levelData is NULL for tower {towerData.towerName}!");
+                }
+            }
+            else
+            {
+                string towerName = towerData != null ? towerData.towerName : "NULL";
+                Debug.LogError($"[TowerInventorySlot] UpdateSprite: Cannot get sprite! towerData={towerData != null}, levels={towerData?.levels != null}, levelsLength={towerData?.levels?.Length ?? 0}, towerName={towerName}");
+            }
+            
+            if (icon != null)
+            {
+                towerIcon.sprite = icon;
+                towerIcon.enabled = true;
+                Debug.Log($"[TowerInventorySlot] UpdateSprite: Successfully set sprite for {towerData?.towerName ?? "unknown"}");
+            }
+            else
+            {
+                towerIcon.enabled = false;
+                Debug.LogError($"[TowerInventorySlot] UpdateSprite: icon is NULL, disabling towerIcon!");
             }
         }
         
@@ -259,4 +385,5 @@ namespace TowerDefense.UI.Inventory
         }
     }
 }
+
 

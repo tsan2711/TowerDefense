@@ -35,6 +35,13 @@ namespace Services.Data
         /// </summary>
         public int usageCount;
 
+        /// <summary>
+        /// Sprite icon for this tower (from Tower.levels[0].levelData.icon)
+        /// Note: This is not serialized to Firestore, will be loaded from Tower library
+        /// </summary>
+        [System.NonSerialized]
+        public Sprite sprite;
+
         public InventoryItemData()
         {
         }
@@ -49,4 +56,5 @@ namespace Services.Data
         }
     }
 }
+
 

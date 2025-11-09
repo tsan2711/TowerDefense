@@ -369,6 +369,68 @@ namespace Services.UI
             Debug.Log("[UIMenuManager] ✅ Inventory panel đã được mở");
         }
 
+        /// <summary>
+        /// Public method to return to main menu from level select screen
+        /// </summary>
+        public void ReturnToMainMenu()
+        {
+            Debug.Log("[UIMenuManager] ReturnToMainMenu() called - hiding level select and showing main menu");
+
+            if (levelSelectScreen == null)
+            {
+                Debug.LogWarning("[UIMenuManager] LevelSelectScreen is null! Cannot hide.");
+                return;
+            }
+
+            // Get the target object to hide (canvas or gameObject)
+            GameObject levelSelectObj = levelSelectScreen.canvas != null 
+                ? levelSelectScreen.canvas.gameObject 
+                : levelSelectScreen.gameObject;
+
+            if (levelSelectObj == null)
+            {
+                Debug.LogWarning("[UIMenuManager] LevelSelectScreen GameObject is null! Cannot hide.");
+                return;
+            }
+
+            // Hide level select screen với callback để show main menu sau khi hide xong
+            UIAnimationHelper.HidePanel(
+                levelSelectObj,
+                levelSelectScreen.animationType,
+                levelSelectScreen.animationDuration,
+                onComplete: () =>
+                {
+                    // Disable canvas or GameObject sau khi hide xong
+                    if (levelSelectScreen.canvas != null)
+                    {
+                        levelSelectScreen.canvas.enabled = false;
+                    }
+                    else
+                    {
+                        levelSelectObj.SetActive(false);
+                    }
+
+                    // Show main menu panel sau khi level select đã hide
+                    if (mainMenuPanel != null)
+                    {
+                        UIAnimationHelper.ShowPanel(
+                            mainMenuPanel,
+                            panelAnimationType,
+                            panelTransitionDuration,
+                            onComplete: () =>
+                            {
+                                Debug.Log("[UIMenuManager] ✅ Main menu đã được hiển thị");
+                            }
+                        );
+                    }
+                    else
+                    {
+                        Debug.LogWarning("[UIMenuManager] mainMenuPanel is null! Cannot show main menu.");
+                    }
+                }
+            );
+        }
+
         private void OnAuthStateChanged(bool isAuthenticated)
         {
             Debug.Log($"[UIMenuManager] Auth state changed: {isAuthenticated}");
