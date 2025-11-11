@@ -15,21 +15,79 @@ namespace TowerDefense.UI.HUD
 		public TowerSpawnButton towerSpawnButton;
 
 		/// <summary>
+		/// List of spawned buttons for cleanup
+		/// </summary>
+		private System.Collections.Generic.List<TowerSpawnButton> spawnedButtons = new System.Collections.Generic.List<TowerSpawnButton>();
+
+		/// <summary>
 		/// Initialize the tower spawn buttons
 		/// </summary>
 		protected virtual void Start()
 		{
 			if (!LevelManager.instanceExists)
 			{
-				Debug.LogError("[UI] No level manager for tower list");
+				Debug.LogError("[BuildSidebar] No level manager for tower list");
+				return;
 			}
-			foreach (Tower tower in LevelManager.instance.towerLibrary)
+
+			// Subscribe to tower library updates
+			LevelManager.instance.towerLibraryUpdated += RefreshTowerButtons;
+			
+			// Initial refresh (may be empty if towerLibrary not ready yet)
+			RefreshTowerButtons();
+		}
+
+		/// <summary>
+		/// Refresh tower buttons based on current tower library
+		/// </summary>
+		private void RefreshTowerButtons()
+		{
+			if (!LevelManager.instanceExists)
 			{
-				TowerSpawnButton button = Instantiate(towerSpawnButton, transform);
-				button.InitializeButton(tower);
-				button.buttonTapped += OnButtonTapped;
-				button.draggedOff += OnButtonDraggedOff;
+				return;
 			}
+
+			// Clear existing buttons
+			ClearButtons();
+
+			// Create buttons for each tower in library
+			if (LevelManager.instance.towerLibrary != null)
+			{
+				Debug.Log($"[BuildSidebar] Refreshing tower buttons - TowerLibrary has {LevelManager.instance.towerLibrary.configurations?.Count ?? 0} towers");
+				foreach (Tower tower in LevelManager.instance.towerLibrary)
+				{
+					if (tower != null)
+					{
+						TowerSpawnButton button = Instantiate(towerSpawnButton, transform);
+						button.InitializeButton(tower);
+						button.buttonTapped += OnButtonTapped;
+						button.draggedOff += OnButtonDraggedOff;
+						spawnedButtons.Add(button);
+						Debug.Log($"[BuildSidebar] ✅ Created button for tower: {tower.towerName}");
+					}
+				}
+			}
+			else
+			{
+				Debug.LogWarning("[BuildSidebar] TowerLibrary is null, cannot create buttons");
+			}
+		}
+
+		/// <summary>
+		/// Clear all existing buttons
+		/// </summary>
+		private void ClearButtons()
+		{
+			foreach (TowerSpawnButton button in spawnedButtons)
+			{
+				if (button != null)
+				{
+					button.buttonTapped -= OnButtonTapped;
+					button.draggedOff -= OnButtonDraggedOff;
+					Destroy(button.gameObject);
+				}
+			}
+			spawnedButtons.Clear();
 		}
 
 		/// <summary>
@@ -63,13 +121,14 @@ namespace TowerDefense.UI.HUD
 		/// </summary>
 		void OnDestroy()
 		{
-			TowerSpawnButton[] childButtons = GetComponentsInChildren<TowerSpawnButton>();
-
-			foreach (TowerSpawnButton towerButton in childButtons)
+			// Unsubscribe from LevelManager event
+			if (LevelManager.instanceExists)
 			{
-				towerButton.buttonTapped -= OnButtonTapped;
-				towerButton.draggedOff -= OnButtonDraggedOff;
+				LevelManager.instance.towerLibraryUpdated -= RefreshTowerButtons;
 			}
+
+			// Clear all buttons
+			ClearButtons();
 		}
 
 		/// <summary>

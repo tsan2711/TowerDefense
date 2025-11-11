@@ -561,7 +561,27 @@ namespace Services.Auth
                     Debug.Log($"[FirebaseAuthService] Loading user inventory from Firestore for user: {currentUserInfo.UID}");
                     await LoadUserInventoryAsync(inventoryService, currentUserInfo.UID);
                     
-                    // Sync inventory vào ScriptableObjects sau khi load xong
+                    // ✅ Filter inventory based on unlocked towers (maxLevel) BEFORE syncing to ScriptableObjects
+                    // This ensures player only has towers they've unlocked
+                    if (TowerDefense.Game.GameManager.instanceExists)
+                    {
+                        Debug.Log("[FirebaseAuthService] Filtering inventory based on player's unlocked towers...");
+                        try
+                        {
+                            await TowerDefense.Game.GameManager.instance.FilterInventoryIfNeeded();
+                            Debug.Log("[FirebaseAuthService] ✅ Inventory filtered successfully");
+                        }
+                        catch (Exception filterEx)
+                        {
+                            Debug.LogError($"[FirebaseAuthService] Error filtering inventory: {filterEx.Message}");
+                        }
+                    }
+                    else
+                    {
+                        Debug.LogWarning("[FirebaseAuthService] GameManager not available, inventory will not be filtered. This may cause issues with tower availability.");
+                    }
+                    
+                    // Sync inventory vào ScriptableObjects sau khi load và filter xong
                     Services.Data.TowerInventoryData inventory = inventoryService?.GetCachedInventory();
                     Debug.Log($"[FirebaseAuthService] Cached inventory check: inventory={inventory != null}");
                     

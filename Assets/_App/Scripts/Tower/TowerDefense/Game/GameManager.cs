@@ -7,6 +7,8 @@ using Services.Data;
 using Services.Managers;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Linq;
+using TowerDefense.Towers;
 
 namespace TowerDefense.Game
 {
@@ -55,6 +57,9 @@ namespace TowerDefense.Game
 			
 			// Load agent configurations from database
 			LoadAgentConfigurationsFromDB();
+			
+			// Load user inventory from database
+			LoadInventoryFromDB();
 		}
 
 		/// <summary>
@@ -140,6 +145,9 @@ namespace TowerDefense.Game
 					if (success)
 					{
 						Debug.Log($"[GAME] Successfully saved level progress to DB: level {levelId}, stars {starsEarned}, maxLevel {maxLevel}");
+						
+						// Unlock tower for completed level
+						await UnlockTowerForLevel(uid, levelId);
 					}
 					else
 					{
@@ -375,5 +383,418 @@ namespace TowerDefense.Game
 				Debug.LogError($"[GAME] Error loading agent configurations from DB: {e.Message}");
 			}
 		}
+		
+		/// <summary>
+		/// Load user inventory from Firestore database
+		/// This ensures selected towers are available when entering a level
+		/// </summary>
+		protected async void LoadInventoryFromDB()
+		{
+			try
+			{
+				var serviceLocator = ServiceLocator.Instance;
+				var authService = serviceLocator.GetService<IAuthService>();
+				if (authService == null || !authService.IsAuthenticated || authService.CurrentUser == null)
+				{
+					Debug.Log("[GAME] User not authenticated, skipping load inventory from DB");
+					return;
+				}
+
+				string uid = authService.CurrentUser.UID;
+
+				var inventoryService = serviceLocator.GetService<IInventoryService>();
+				if (inventoryService != null)
+				{
+					var inventoryData = await inventoryService.LoadUserInventoryAsync(uid);
+					
+					if (inventoryData != null)
+					{
+						// Filter inventory based on unlocked towers (maxLevel)
+						await FilterInventoryByUnlockedTowers(inventoryService, uid, inventoryData);
+						
+						var selectedTowers = inventoryData.GetSelectedTowers();
+						Debug.Log($"[GAME] Successfully loaded inventory from DB: {inventoryData.ownedTowers.Count} towers owned, {selectedTowers.Count} selected");
+						
+						// Log selected towers
+						if (selectedTowers.Count > 0)
+						{
+							Debug.Log($"[GAME] Selected towers for gameplay:");
+							foreach (var tower in selectedTowers)
+							{
+								Debug.Log($"  - {tower.towerName} (Type: {tower.towerType})");
+							}
+						}
+						else
+						{
+							Debug.LogWarning("[GAME] No towers selected! Player won't have any towers in level.");
+						}
+					}
+					else
+					{
+						Debug.LogWarning("[GAME] Failed to load inventory from DB");
+					}
+				}
+				else
+				{
+					Debug.LogWarning("[GAME] InventoryService not available");
+				}
+			}
+			catch (System.Exception e)
+			{
+				Debug.LogError($"[GAME] Error loading inventory from DB: {e.Message}");
+			}
+		}
+		
+		/// <summary>
+		/// Public method to trigger loading inventory from database
+		/// Can be called when user logs in after GameManager is already initialized
+		/// </summary>
+		public void RefreshInventoryFromDB()
+		{
+			LoadInventoryFromDB();
+		}
+
+		/// <summary>
+		/// Public method to trigger filtering inventory by unlocked towers
+		/// Can be called when entering a level to ensure inventory is synced with maxLevel
+		/// </summary>
+		public async System.Threading.Tasks.Task FilterInventoryIfNeeded()
+		{
+			try
+			{
+				var serviceLocator = ServiceLocator.Instance;
+				var authService = serviceLocator?.GetService<IAuthService>();
+				if (authService == null || !authService.IsAuthenticated || authService.CurrentUser == null)
+				{
+					Debug.Log("[GAME] User not authenticated, skipping filter inventory");
+					return;
+				}
+
+				string uid = authService.CurrentUser.UID;
+				var inventoryService = serviceLocator?.GetService<IInventoryService>();
+				if (inventoryService == null)
+				{
+					Debug.LogWarning("[GAME] InventoryService not available, cannot filter inventory");
+					return;
+				}
+
+				// Load current inventory
+				var inventoryData = inventoryService.GetCachedInventory();
+				if (inventoryData == null)
+				{
+					// Try to load from DB first
+					inventoryData = await inventoryService.LoadUserInventoryAsync(uid);
+				}
+
+				if (inventoryData != null)
+				{
+					// Filter inventory based on unlocked towers
+					await FilterInventoryByUnlockedTowers(inventoryService, uid, inventoryData);
+				}
+			}
+			catch (System.Exception e)
+			{
+				Debug.LogError($"[GAME] Error filtering inventory: {e.Message}");
+			}
+		}
+
+		/// <summary>
+		/// Unlock tower for completed level
+		/// When player wins level 1 (index 0): Unlock Rocket
+		/// When player wins level 2 (index 1): Unlock Emp
+		/// When player wins level 3 (index 2): Unlock Laser
+		/// </summary>
+		protected async System.Threading.Tasks.Task UnlockTowerForLevel(string userId, string levelId)
+		{
+			try
+			{
+				// Get level index
+				int levelIndex = GetLevelIndex(levelId);
+				if (levelIndex < 0)
+				{
+					Debug.LogWarning($"[GAME] Cannot unlock tower: Invalid levelId {levelId}");
+					return;
+				}
+
+				// Determine which tower to unlock based on level index
+				// When player wins level 1 (index 0), unlock Rocket for level 2
+				// When player wins level 2 (index 1), unlock Emp for level 3
+				// When player wins level 3 (index 2), unlock Laser for level 4
+				MainTower towerToUnlock = MainTower.MachineGun; // Default
+				bool shouldUnlock = false;
+
+				if (levelIndex == 0)
+				{
+					// Win level 1 -> unlock Rocket
+					towerToUnlock = MainTower.Rocket;
+					shouldUnlock = true;
+				}
+				else if (levelIndex == 1)
+				{
+					// Win level 2 -> unlock Emp
+					towerToUnlock = MainTower.Emp;
+					shouldUnlock = true;
+				}
+				else if (levelIndex == 2)
+				{
+					// Win level 3 -> unlock Laser
+					towerToUnlock = MainTower.Laser;
+					shouldUnlock = true;
+				}
+
+				if (!shouldUnlock)
+				{
+					Debug.Log($"[GAME] No tower to unlock for level index {levelIndex}");
+					return;
+				}
+
+				// Load all tower prefabs to find towerName from MainTower
+				Tower[] allTowerPrefabs = Resources.LoadAll<Tower>("Towers");
+				if (allTowerPrefabs == null || allTowerPrefabs.Length == 0)
+				{
+					Debug.LogWarning("[GAME] Cannot unlock tower: No tower prefabs found in Resources/Towers/");
+					return;
+				}
+
+				// Find tower prefab with matching MainTower
+				Tower towerPrefab = null;
+				foreach (var prefab in allTowerPrefabs)
+				{
+					if (prefab != null && prefab.mainTower == towerToUnlock)
+					{
+						towerPrefab = prefab;
+						break;
+					}
+				}
+
+				if (towerPrefab == null || string.IsNullOrEmpty(towerPrefab.towerName))
+				{
+					Debug.LogWarning($"[GAME] Cannot unlock tower: Tower prefab with MainTower.{towerToUnlock} not found");
+					return;
+				}
+
+				// Get inventory service
+				var serviceLocator = ServiceLocator.Instance;
+				var inventoryService = serviceLocator?.GetService<IInventoryService>();
+				if (inventoryService == null)
+				{
+					Debug.LogWarning("[GAME] Cannot unlock tower: InventoryService not available");
+					return;
+				}
+
+				// Check if user already owns this tower
+				if (inventoryService.HasTower(towerPrefab.towerName))
+				{
+					Debug.Log($"[GAME] User already owns tower {towerPrefab.towerName}, skipping unlock");
+					return;
+				}
+
+				// Unlock tower
+				bool success = await inventoryService.UnlockTowerAsync(userId, towerPrefab.towerName);
+				if (success)
+				{
+					Debug.Log($"[GAME] ✅ Successfully unlocked tower {towerPrefab.towerName} (MainTower: {towerToUnlock}) for completing level {levelId} (index {levelIndex})");
+				}
+				else
+				{
+					Debug.LogWarning($"[GAME] Failed to unlock tower {towerPrefab.towerName} for user {userId}");
+				}
+			}
+			catch (System.Exception e)
+			{
+				Debug.LogError($"[GAME] Error unlocking tower for level: {e.Message}");
+			}
+		}
+
+		/// <summary>
+		/// Filter inventory to only keep towers that are unlocked based on player's maxLevel
+		/// Removes towers that are not unlocked and deselects them if they were selected
+		/// Level 1: Machine Gun
+		/// Level 2: Machine Gun + Rocket
+		/// Level 3: Machine Gun + Rocket + Emp
+		/// Level 4: Machine Gun + Rocket + Emp + Laser
+		/// </summary>
+		protected async Task FilterInventoryByUnlockedTowers(IInventoryService inventoryService, string userId, TowerInventoryData inventoryData)
+		{
+			if (inventoryData == null || inventoryData.ownedTowers == null)
+			{
+				return;
+			}
+
+			// Get unlocked tower types based on maxLevel
+			int maxLevel = GetMaxLevel();
+			if (maxLevel < 1)
+			{
+				maxLevel = 1; // Default to level 1
+			}
+
+		HashSet<int> unlockedTowerTypes = new HashSet<int>();
+		List<string> unlockedTowerNames = new List<string>();
+		
+		unlockedTowerTypes.Add((int)MainTower.MachineGun); // Always unlocked
+		unlockedTowerNames.Add("MachineGun");
+		
+		if (maxLevel >= 2)
+		{
+			unlockedTowerTypes.Add((int)MainTower.Rocket);
+			unlockedTowerNames.Add("Rocket");
+		}
+		if (maxLevel >= 3)
+		{
+			unlockedTowerTypes.Add((int)MainTower.Emp);
+			unlockedTowerNames.Add("Emp");
+		}
+		if (maxLevel >= 4)
+		{
+			unlockedTowerTypes.Add((int)MainTower.Laser);
+			unlockedTowerNames.Add("Laser");
+		}
+
+		Debug.Log($"[GAME] Filtering inventory for maxLevel {maxLevel}. Unlocked towers ({unlockedTowerTypes.Count}): {string.Join(", ", unlockedTowerNames)}");
+
+		// Load all tower prefabs to map towerName -> MainTower
+		Debug.Log("[GAME] Loading tower prefabs from Resources/Towers/...");
+		Tower[] allTowerPrefabs = Resources.LoadAll<Tower>("Towers");
+		Debug.Log($"[GAME] Loaded {(allTowerPrefabs != null ? allTowerPrefabs.Length : 0)} tower prefabs");
+		
+		if (allTowerPrefabs == null || allTowerPrefabs.Length == 0)
+		{
+			Debug.LogError("[GAME] ❌ Cannot filter inventory: No tower prefabs found in Resources/Towers/");
+			return;
+		}
+
+			// Create mapping: towerName -> MainTower
+			Dictionary<string, MainTower> towerNameToType = new Dictionary<string, MainTower>();
+			foreach (var prefab in allTowerPrefabs)
+			{
+				if (prefab != null && !string.IsNullOrEmpty(prefab.towerName))
+				{
+					towerNameToType[prefab.towerName] = prefab.mainTower;
+				}
+			}
+
+		// Find towers to remove (not unlocked)
+		List<string> towersToRemove = new List<string>();
+		List<string> selectedTowersToDeselect = new List<string>();
+		
+		Debug.Log($"[GAME] Checking {inventoryData.ownedTowers.Count} towers in inventory...");
+
+		foreach (var tower in inventoryData.ownedTowers.ToList())
+		{
+			if (tower == null || string.IsNullOrEmpty(tower.towerName))
+			{
+				continue;
+			}
+
+			// Check if tower type is unlocked
+			bool isUnlocked = false;
+			MainTower towerMainType = MainTower.MachineGun;
+			
+			if (towerNameToType.ContainsKey(tower.towerName))
+			{
+				towerMainType = towerNameToType[tower.towerName];
+				isUnlocked = unlockedTowerTypes.Contains((int)towerMainType);
+				Debug.Log($"[GAME] Checking tower: {tower.towerName} -> MainTower.{towerMainType} (value={(int)towerMainType}) -> {(isUnlocked ? "✅ UNLOCKED" : "❌ LOCKED")}");
+			}
+			else
+			{
+				// If tower name not found in prefabs, check by towerType (fallback)
+				isUnlocked = unlockedTowerTypes.Contains(tower.towerType);
+				Debug.LogWarning($"[GAME] Tower {tower.towerName} not found in prefabs! Checking by towerType={tower.towerType} -> {(isUnlocked ? "UNLOCKED" : "LOCKED")}");
+			}
+
+			if (!isUnlocked)
+			{
+				// Mark for removal
+				towersToRemove.Add(tower.towerName);
+				if (tower.isSelected)
+				{
+					selectedTowersToDeselect.Add(tower.towerName);
+				}
+				Debug.Log($"[GAME] ❌ Tower {tower.towerName} (MainTower.{towerMainType}, towerType={tower.towerType}) is not unlocked for maxLevel {maxLevel}, will be removed");
+			}
+		}
+
+			// Remove locked towers from database
+			bool inventoryChanged = false;
+			foreach (var towerName in towersToRemove)
+			{
+				bool removed = await inventoryService.RemoveTowerAsync(userId, towerName);
+				if (removed)
+				{
+					inventoryChanged = true;
+					Debug.Log($"[GAME] Removed locked tower from database: {towerName}");
+				}
+				else
+				{
+					// If remove failed, still remove from local data
+					inventoryData.RemoveTower(towerName);
+					inventoryChanged = true;
+					Debug.Log($"[GAME] Removed locked tower from local data: {towerName}");
+				}
+			}
+
+			// Reload inventory after removing towers
+			if (inventoryChanged)
+			{
+				inventoryData = await inventoryService.LoadUserInventoryAsync(userId);
+			}
+
+			// If any selected towers were removed, update selection
+			if (selectedTowersToDeselect.Count > 0 || inventoryChanged)
+			{
+				var remainingSelected = inventoryData.GetSelectedTowerNames();
+				if (remainingSelected.Count > 0)
+				{
+					// Keep only unlocked selected towers
+					await inventoryService.SelectTowersAsync(userId, remainingSelected);
+					Debug.Log($"[GAME] Updated selected towers after filtering: {string.Join(", ", remainingSelected)}");
+				}
+				else
+				{
+					// No towers selected, select Machine Gun if available
+					var machineGunTower = inventoryData.ownedTowers.FirstOrDefault(t => 
+						towerNameToType.ContainsKey(t.towerName) && 
+						towerNameToType[t.towerName] == MainTower.MachineGun);
+					
+					if (machineGunTower != null)
+					{
+						await inventoryService.SelectTowersAsync(userId, new List<string> { machineGunTower.towerName });
+						Debug.Log($"[GAME] Auto-selected Machine Gun as default tower");
+					}
+				}
+			}
+
+		if (inventoryChanged)
+		{
+			Debug.Log($"[GAME] Inventory filtered and saved. Removed {towersToRemove.Count} locked towers");
+			
+			// Sync updated inventory to ScriptableObjects
+			var serviceLocator = ServiceLocator.Instance;
+			if (serviceLocator != null)
+			{
+				// Get latest inventory data
+				var latestInventory = inventoryService.GetCachedInventory();
+				if (latestInventory != null)
+				{
+			Debug.Log("[GAME] Syncing filtered inventory to ScriptableObjects...");
+				try
+				{
+					Services.Firestore.GameDataSyncService.SyncUserInventoryToScriptableObject(latestInventory);
+					Services.Firestore.GameDataSyncService.SyncUserInventoryDataToScriptableObject(latestInventory);
+					Debug.Log("[GAME] ✅ Successfully synced filtered inventory to ScriptableObjects");
+				}
+				catch (System.Exception syncEx)
+				{
+					Debug.LogError($"[GAME] Error syncing filtered inventory: {syncEx.Message}");
+				}
+				}
+			}
+		}
+		else
+		{
+			Debug.Log($"[GAME] Inventory is already in sync with unlocked towers");
+		}
 	}
+}
 }

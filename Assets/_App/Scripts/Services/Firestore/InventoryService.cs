@@ -67,47 +67,14 @@ namespace Services.Firestore
                     
                     Debug.Log($"[{GetServiceName()}] Loaded inventory for user {userId}: {cachedInventory.ownedTowers.Count} towers");
                     
-                    // Đảm bảo user luôn có Emp1 (nếu chưa có thì tự động thêm)
-                    try
-                    {
-                        await EnsureEmp1TowerAsync(userId);
-                    }
-                    catch (Exception empEx)
-                    {
-                        Debug.LogError($"[{GetServiceName()}] Error ensuring Emp1: {empEx.Message}");
-                        Debug.LogError($"[{GetServiceName()}] Stack trace: {empEx.StackTrace}");
-                    }
+                    // ❌ REMOVED: Auto-add Emp1 logic - conflicts with tower unlock system
+                    // Towers should only be unlocked through gameplay progression (FilterInventoryByUnlockedTowers)
+                    // Đã xóa: Logic tự động thêm Emp1 - xung đột với hệ thống unlock tower theo progression
                     
-                    // Đảm bảo ownedTowers vẫn không null sau khi thêm Emp1
+                    // Đảm bảo ownedTowers không null
                     if (cachedInventory.ownedTowers == null)
                     {
                         cachedInventory.ownedTowers = new List<InventoryItemData>();
-                    }
-                    
-                    // Kiểm tra lại xem Emp1 có trong inventory không
-                    bool hasEmp1 = cachedInventory.HasTower("Emp1");
-                    Debug.Log($"[{GetServiceName()}] Final inventory count: {cachedInventory.ownedTowers.Count} towers, HasEmp1: {hasEmp1}");
-                    
-                    // Nếu vẫn chưa có Emp1, thêm trực tiếp vào cache (fallback)
-                    if (!hasEmp1 && cachedInventory.ownedTowers != null)
-                    {
-                        Debug.LogWarning($"[{GetServiceName()}] Emp1 still missing after EnsureEmp1TowerAsync, adding directly to cache...");
-                        InventoryItemData emp1Tower = new InventoryItemData("Emp1", 0, false);
-                        cachedInventory.AddTower(emp1Tower);
-                        Debug.Log($"[{GetServiceName()}] Added Emp1 directly to cache. New count: {cachedInventory.ownedTowers.Count}");
-                        
-                        // Try to save async (don't await to avoid blocking)
-                        _ = SaveInventoryAsync(cachedInventory).ContinueWith(task =>
-                        {
-                            if (task.Result)
-                            {
-                                Debug.Log($"[{GetServiceName()}] ✅ Saved Emp1 to Firestore after direct add");
-                            }
-                            else
-                            {
-                                Debug.LogError($"[{GetServiceName()}] ❌ Failed to save Emp1 to Firestore after direct add");
-                            }
-                        });
                     }
                     
                     OnInventoryLoaded?.Invoke(cachedInventory);

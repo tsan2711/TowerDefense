@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using UnityEngine;
 using UnityEngine.UI;
 using DG.Tweening;
@@ -215,17 +216,20 @@ namespace TowerDefense.UI.Inventory
             // Populate sprites for all inventory items from Tower library
             PopulateSpritesForInventoryItems(inventoryData.ownedTowers);
             
-            // Get selected towers
+            // Get unlocked tower types based on player's maxLevel (same logic as LevelManager)
+            HashSet<int> unlockedTowerTypes = GetUnlockedTowerTypes();
+            
+            // Get selected towers - filter to only include unlocked towers
             List<InventoryItemData> selectedTowers = inventoryData.ownedTowers?
-                .Where(t => t != null && t.isSelected)
+                .Where(t => t != null && t.isSelected && IsTowerUnlocked(t, unlockedTowerTypes))
                 .ToList() ?? new List<InventoryItemData>();
             
-            // Get unselected towers (inventory)
+            // Get unselected towers (inventory) - filter to only include unlocked towers
             List<InventoryItemData> unselectedTowers = inventoryData.ownedTowers?
-                .Where(t => t != null && !t.isSelected)
+                .Where(t => t != null && !t.isSelected && IsTowerUnlocked(t, unlockedTowerTypes))
                 .ToList() ?? new List<InventoryItemData>();
             
-            Debug.Log($"[InventoryUIManager] Selected towers: {selectedTowers.Count}, Unselected towers: {unselectedTowers.Count}");
+            Debug.Log($"[InventoryUIManager] Selected towers (after unlock filter): {selectedTowers.Count}, Unselected towers (after unlock filter): {unselectedTowers.Count}");
             
             // Update selected slots (duyệt qua mảng đã assign sẵn và đổ dữ liệu vào)
             if (selectedSlots != null && selectedSlots.Length > 0)
@@ -236,11 +240,11 @@ namespace TowerDefense.UI.Inventory
                     {
                         if (i < selectedTowers.Count)
                         {
-                            // Get tower data from library
-                            Tower towerData = GetTowerFromLibrary(selectedTowers[i].towerName);
+                            // Get tower data from library (use towerType for reliable lookup)
+                            Tower towerData = GetTowerFromLibrary(selectedTowers[i].towerName, selectedTowers[i].towerType);
                             if (towerData == null)
                             {
-                                Debug.LogError($"[InventoryUIManager] RefreshInventoryDisplay: Cannot find tower '{selectedTowers[i].towerName}' for selected slot {i}, setting empty");
+                                Debug.LogError($"[InventoryUIManager] RefreshInventoryDisplay: Cannot find tower '{selectedTowers[i].towerName}' (type={selectedTowers[i].towerType}) for selected slot {i}, setting empty");
                                 selectedSlots[i].SetEmpty();
                             }
                             else
@@ -286,10 +290,11 @@ namespace TowerDefense.UI.Inventory
                     
                     if (slot != null)
                     {
-                        Tower towerData = GetTowerFromLibrary(item.towerName);
+                        // Get tower data from library (use towerType for reliable lookup)
+                        Tower towerData = GetTowerFromLibrary(item.towerName, item.towerType);
                         if (towerData == null)
                         {
-                            Debug.LogError($"[InventoryUIManager] RefreshInventoryDisplay: Cannot find tower '{item.towerName}' for inventory slot, skipping");
+                            Debug.LogError($"[InventoryUIManager] RefreshInventoryDisplay: Cannot find tower '{item.towerName}' (type={item.towerType}) for inventory slot, skipping");
                             Destroy(slotObj);
                         }
                         else
@@ -349,53 +354,113 @@ namespace TowerDefense.UI.Inventory
         }
         
         /// <summary>
-        /// Get tower data from library by name
-        /// Tries current level library first, then searches all libraries as fallback
+        /// Generate name variations to try when searching for a tower
+        /// Handles cases like "MachineGun1" -> "MachineGun", "Emp1" -> "EMP", etc.
         /// </summary>
-        private Tower GetTowerFromLibrary(string towerName)
+        private List<string> GenerateTowerNameVariations(string towerName)
+        {
+            List<string> variations = new List<string>();
+            
+            if (string.IsNullOrEmpty(towerName))
+                return variations;
+            
+            // Add original name first
+            variations.Add(towerName);
+            
+            // Remove trailing numbers (e.g., "MachineGun1" -> "MachineGun")
+            string withoutNumbers = Regex.Replace(towerName, @"\d+$", "");
+            if (withoutNumbers != towerName && !variations.Contains(withoutNumbers))
+            {
+                variations.Add(withoutNumbers);
+            }
+            
+            // Try uppercase variations (e.g., "Emp" -> "EMP", "Emp1" -> "EMP")
+            string upperOriginal = towerName.ToUpper();
+            if (upperOriginal != towerName && !variations.Contains(upperOriginal))
+            {
+                variations.Add(upperOriginal);
+            }
+            
+            string upperWithoutNumbers = withoutNumbers.ToUpper();
+            if (upperWithoutNumbers != towerName && upperWithoutNumbers != withoutNumbers && !variations.Contains(upperWithoutNumbers))
+            {
+                variations.Add(upperWithoutNumbers);
+            }
+            
+            // Special case mappings
+            Dictionary<string, string> specialMappings = new Dictionary<string, string>
+            {
+                { "Emp1", "EMP" },
+                { "Emp", "EMP" },
+                { "MachineGun1", "MachineGun" },
+                { "MachineGun", "MachineGun" }
+            };
+            
+            foreach (var mapping in specialMappings)
+            {
+                if (towerName == mapping.Key && !variations.Contains(mapping.Value))
+                {
+                    variations.Add(mapping.Value);
+                }
+            }
+            
+            return variations;
+        }
+        
+        /// <summary>
+        /// Try to find tower in a library using name variations
+        /// </summary>
+        private Tower TryFindTowerInLibrary(TowerLibrary library, string originalName)
+        {
+            if (library == null)
+                return null;
+            
+            List<string> variations = GenerateTowerNameVariations(originalName);
+            
+            foreach (string variation in variations)
+            {
+                if (library.TryGetValue(variation, out Tower tower))
+                {
+                    if (variation != originalName)
+                    {
+                        Debug.Log($"[InventoryUIManager] GetTowerFromLibrary: Found '{originalName}' using variation '{variation}'");
+                    }
+                    return tower;
+                }
+            }
+            
+            return null;
+        }
+        
+        /// <summary>
+        /// Get tower by MainTower type from library
+        /// Searches all libraries for tower with matching mainTower enum
+        /// </summary>
+        private Tower GetTowerByMainTowerType(int towerType)
         {
             if (libraryContainer == null)
             {
-                Debug.LogError($"[InventoryUIManager] GetTowerFromLibrary: libraryContainer is NULL!");
+                Debug.LogError($"[InventoryUIManager] GetTowerByMainTowerType: libraryContainer is NULL!");
                 return null;
             }
             
-            if (string.IsNullOrEmpty(towerName))
-            {
-                Debug.LogError($"[InventoryUIManager] GetTowerFromLibrary: towerName is empty!");
-                return null;
-            }
+            MainTower targetMainTower = (MainTower)towerType;
             
             // Try current level library first
             if (!string.IsNullOrEmpty(currentLevelId))
             {
                 TowerLibrary library = libraryContainer.GetLibrary(currentLevelId);
-                if (library != null)
+                if (library != null && library.configurations != null)
                 {
-                    if (library.TryGetValue(towerName, out Tower tower))
+                    foreach (var tower in library.configurations)
                     {
-                        Debug.Log($"[InventoryUIManager] GetTowerFromLibrary: Found '{towerName}' in current library levelId={currentLevelId}");
-                        return tower;
-                    }
-                    else
-                    {
-                        // Log available towers in current library for debugging
-                        Debug.LogWarning($"[InventoryUIManager] GetTowerFromLibrary: '{towerName}' not found in current library levelId={currentLevelId}");
-                        if (library.configurations != null)
+                        if (tower != null && tower.mainTower == targetMainTower)
                         {
-                            string availableTowers = string.Join(", ", library.configurations.Select(t => t?.towerName ?? "NULL"));
-                            Debug.Log($"[InventoryUIManager] Available towers in library '{currentLevelId}': {availableTowers}");
+                            Debug.Log($"[InventoryUIManager] GetTowerByMainTowerType: Found tower with mainTower={targetMainTower} ('{tower.towerName}') in current library levelId={currentLevelId}");
+                            return tower;
                         }
                     }
                 }
-                else
-                {
-                    Debug.LogWarning($"[InventoryUIManager] GetTowerFromLibrary: Library not found for levelId: {currentLevelId}");
-                }
-            }
-            else
-            {
-                Debug.LogWarning($"[InventoryUIManager] GetTowerFromLibrary: currentLevelId is empty, searching all libraries...");
             }
             
             // Fallback: Search all libraries
@@ -404,26 +469,144 @@ namespace TowerDefense.UI.Inventory
             {
                 foreach (var library in allLibraries)
                 {
-                    if (library != null && library.TryGetValue(towerName, out Tower tower))
+                    if (library != null && library.configurations != null)
                     {
-                        // Find which levelId this library belongs to
-                        string foundLevelId = "unknown";
-                        var allLevelIds = libraryContainer.GetAllLevelIds();
-                        foreach (var levelId in allLevelIds)
+                        foreach (var tower in library.configurations)
                         {
-                            if (libraryContainer.GetLibrary(levelId) == library)
+                            if (tower != null && tower.mainTower == targetMainTower)
                             {
-                                foundLevelId = levelId;
-                                break;
+                                // Find which levelId this library belongs to
+                                string foundLevelId = "unknown";
+                                var allLevelIds = libraryContainer.GetAllLevelIds();
+                                foreach (var levelId in allLevelIds)
+                                {
+                                    if (libraryContainer.GetLibrary(levelId) == library)
+                                    {
+                                        foundLevelId = levelId;
+                                        break;
+                                    }
+                                }
+                                Debug.Log($"[InventoryUIManager] GetTowerByMainTowerType: Found tower with mainTower={targetMainTower} ('{tower.towerName}') in fallback library levelId={foundLevelId}");
+                                return tower;
                             }
                         }
-                        Debug.Log($"[InventoryUIManager] GetTowerFromLibrary: Found '{towerName}' in fallback library levelId={foundLevelId}");
-                        return tower;
                     }
                 }
             }
             
-            Debug.LogError($"[InventoryUIManager] GetTowerFromLibrary: '{towerName}' not found in ANY library! Total libraries: {allLibraries?.Count ?? 0}");
+            Debug.LogWarning($"[InventoryUIManager] GetTowerByMainTowerType: Tower with mainTower={targetMainTower} not found in ANY library! Total libraries: {allLibraries?.Count ?? 0}");
+            return null;
+        }
+        
+        /// <summary>
+        /// Get tower data from library by name or type
+        /// Priority: 1) Search by towerName with variations (most accurate), 2) Search by towerType (MainTower enum) as fallback
+        /// Tries current level library first, then searches all libraries as fallback
+        /// Handles name variations (e.g., "MachineGun1" -> "MachineGun", "Emp1" -> "EMP")
+        /// </summary>
+        private Tower GetTowerFromLibrary(string towerName, int towerType = -1)
+        {
+            if (libraryContainer == null)
+            {
+                Debug.LogError($"[InventoryUIManager] GetTowerFromLibrary: libraryContainer is NULL!");
+                return null;
+            }
+            
+            if (string.IsNullOrEmpty(towerName) && towerType < 0)
+            {
+                Debug.LogError($"[InventoryUIManager] GetTowerFromLibrary: Both towerName and towerType are invalid!");
+                return null;
+            }
+            
+            // Priority 1: Try finding by towerName with variations (most accurate - towerName is unique)
+            if (!string.IsNullOrEmpty(towerName))
+            {
+                // Try current level library first
+                if (!string.IsNullOrEmpty(currentLevelId))
+                {
+                    TowerLibrary library = libraryContainer.GetLibrary(currentLevelId);
+                    if (library != null)
+                    {
+                        Tower tower = TryFindTowerInLibrary(library, towerName);
+                        if (tower != null)
+                        {
+                            Debug.Log($"[InventoryUIManager] GetTowerFromLibrary: Found '{towerName}' in current library levelId={currentLevelId}");
+                            return tower;
+                        }
+                        else
+                        {
+                            // Log available towers in current library for debugging
+                            Debug.LogWarning($"[InventoryUIManager] GetTowerFromLibrary: '{towerName}' not found in current library levelId={currentLevelId}");
+                            if (library.configurations != null)
+                            {
+                                string availableTowers = string.Join(", ", library.configurations.Select(t => t?.towerName ?? "NULL"));
+                                Debug.Log($"[InventoryUIManager] Available towers in library '{currentLevelId}': {availableTowers}");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[InventoryUIManager] GetTowerFromLibrary: Library not found for levelId: {currentLevelId}");
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning($"[InventoryUIManager] GetTowerFromLibrary: currentLevelId is empty, searching all libraries...");
+                }
+                
+                // Fallback: Search all libraries by name
+                List<TowerLibrary> allLibraries = libraryContainer.GetAllLibraries();
+                if (allLibraries != null && allLibraries.Count > 0)
+                {
+                    foreach (var library in allLibraries)
+                    {
+                        Tower tower = TryFindTowerInLibrary(library, towerName);
+                        if (tower != null)
+                        {
+                            // Find which levelId this library belongs to
+                            string foundLevelId = "unknown";
+                            var allLevelIds = libraryContainer.GetAllLevelIds();
+                            foreach (var levelId in allLevelIds)
+                            {
+                                if (libraryContainer.GetLibrary(levelId) == library)
+                                {
+                                    foundLevelId = levelId;
+                                    break;
+                                }
+                            }
+                            Debug.Log($"[InventoryUIManager] GetTowerFromLibrary: Found '{towerName}' in fallback library levelId={foundLevelId}");
+                            return tower;
+                        }
+                    }
+                }
+                
+                // If not found by name, try by towerType as fallback
+                if (towerType >= 0)
+                {
+                    Debug.LogWarning($"[InventoryUIManager] GetTowerFromLibrary: '{towerName}' not found by name, trying by towerType={towerType} as fallback...");
+                    Tower towerByType = GetTowerByMainTowerType(towerType);
+                    if (towerByType != null)
+                    {
+                        Debug.LogWarning($"[InventoryUIManager] GetTowerFromLibrary: Found tower by type fallback: '{towerByType.towerName}' (mainTower={towerByType.mainTower}) for '{towerName}'");
+                        return towerByType;
+                    }
+                }
+                
+                Debug.LogError($"[InventoryUIManager] GetTowerFromLibrary: '{towerName}' (towerType={towerType}) not found in ANY library by name or type!");
+                return null;
+            }
+            
+            // Priority 2: If towerName is empty, try by towerType only
+            if (towerType >= 0)
+            {
+                Tower towerByType = GetTowerByMainTowerType(towerType);
+                if (towerByType != null)
+                {
+                    return towerByType;
+                }
+            }
+            
+            Debug.LogError($"[InventoryUIManager] GetTowerFromLibrary: Both towerName and towerType search failed! towerName='{towerName}', towerType={towerType}");
             return null;
         }
         
@@ -545,39 +728,42 @@ namespace TowerDefense.UI.Inventory
                 // Skip if sprite already populated
                 if (item.sprite != null)
                 {
-                    Debug.Log($"[InventoryUIManager] PopulateSpritesForInventoryItems: Sprite already populated for {item.towerName}");
+                    Debug.Log($"[InventoryUIManager] PopulateSpritesForInventoryItems: Sprite already populated for {item.towerName} (towerType={item.towerType})");
                     successCount++;
                     continue;
                 }
                 
-                // Get tower from library (with fallback to all libraries)
-                Tower tower = GetTowerFromLibrary(item.towerName);
+                // Get tower from library (with fallback to all libraries, use towerType for reliable lookup)
+                Debug.Log($"[InventoryUIManager] PopulateSpritesForInventoryItems: Looking for tower '{item.towerName}' (towerType={item.towerType})...");
+                Tower tower = GetTowerFromLibrary(item.towerName, item.towerType);
                 if (tower != null)
                 {
+                    Debug.Log($"[InventoryUIManager] PopulateSpritesForInventoryItems: Found tower '{tower.towerName}' (mainTower={tower.mainTower}) for item '{item.towerName}'");
+                    
                     // Get sprite from tower's first level
                     if (tower.levels != null && tower.levels.Length > 0 && tower.levels[0].levelData != null)
                     {
                         if (tower.levels[0].levelData.icon != null)
                         {
                             item.sprite = tower.levels[0].levelData.icon;
-                            Debug.Log($"[InventoryUIManager] PopulateSpritesForInventoryItems: Successfully populated sprite for {item.towerName}");
+                            Debug.Log($"[InventoryUIManager] PopulateSpritesForInventoryItems: ✅ Successfully populated sprite for '{item.towerName}' -> Using sprite from tower '{tower.towerName}' (sprite name: {tower.levels[0].levelData.icon.name})");
                             successCount++;
                         }
                         else
                         {
-                            Debug.LogError($"[InventoryUIManager] PopulateSpritesForInventoryItems: Tower {item.towerName}.levels[0].levelData.icon is NULL!");
+                            Debug.LogError($"[InventoryUIManager] PopulateSpritesForInventoryItems: Tower {tower.towerName}.levels[0].levelData.icon is NULL!");
                             failCount++;
                         }
                     }
                     else
                     {
-                        Debug.LogError($"[InventoryUIManager] PopulateSpritesForInventoryItems: Tower {item.towerName} has no levels or levelData is NULL!");
+                        Debug.LogError($"[InventoryUIManager] PopulateSpritesForInventoryItems: Tower {tower.towerName} has no levels or levelData is NULL!");
                         failCount++;
                     }
                 }
                 else
                 {
-                    Debug.LogError($"[InventoryUIManager] PopulateSpritesForInventoryItems: Tower '{item.towerName}' not found in ANY library!");
+                    Debug.LogError($"[InventoryUIManager] PopulateSpritesForInventoryItems: Tower '{item.towerName}' (towerType={item.towerType}) not found in ANY library!");
                     failCount++;
                 }
             }
@@ -833,17 +1019,18 @@ namespace TowerDefense.UI.Inventory
             
             if (currentSelectedSlot == null)
             {
-                // First selection
+                // First selection - highlight the slot
                 currentSelectedSlot = slot;
                 slot.SetSelected(true, true);
                 Debug.Log($"[InventoryUIManager] Selected tower: {slot.TowerData.towerName}");
             }
             else if (currentSelectedSlot == slot)
             {
-                // Deselect
+                // Click again on same slot - unselect tower (move to inventory)
                 currentSelectedSlot.SetSelected(false, true);
                 currentSelectedSlot = null;
-                Debug.Log("[InventoryUIManager] Deselected tower");
+                Debug.Log("[InventoryUIManager] Unselecting tower (moving to inventory)");
+                StartCoroutine(MoveToInventory(slot));
             }
             else
             {
@@ -969,6 +1156,76 @@ namespace TowerDefense.UI.Inventory
         }
         
         /// <summary>
+        /// Move tower from selected slot to inventory (unselect)
+        /// </summary>
+        private IEnumerator MoveToInventory(TowerInventorySlot selectedSlot)
+        {
+            isSwapping = true;
+            
+            // Store data
+            Tower towerData = selectedSlot.TowerData;
+            InventoryItemData itemData = selectedSlot.InventoryItem;
+            
+            if (towerData == null || itemData == null)
+            {
+                Debug.LogError("[InventoryUIManager] Cannot move to inventory: tower data is null");
+                isSwapping = false;
+                yield break;
+            }
+            
+            // Create inventory slot
+            if (inventoryGridContainer == null || slotPrefab == null)
+            {
+                Debug.LogError("[InventoryUIManager] Cannot move to inventory: missing inventory container or prefab");
+                isSwapping = false;
+                yield break;
+            }
+            
+            GameObject slotObj = Instantiate(slotPrefab, inventoryGridContainer);
+            TowerInventorySlot newInventorySlot = slotObj.GetComponent<TowerInventorySlot>();
+            
+            if (newInventorySlot == null)
+            {
+                Debug.LogError("[InventoryUIManager] Cannot move to inventory: failed to create slot");
+                Destroy(slotObj);
+                isSwapping = false;
+                yield break;
+            }
+            
+            // Position at selected slot first (for animation)
+            slotObj.transform.position = selectedSlot.transform.position;
+            
+            // Initialize inventory slot
+            newInventorySlot.Initialize(towerData, itemData, false);
+            newInventorySlot.OnSlotClicked += OnInventorySlotClicked;
+            
+            // Animate move to inventory grid
+            // Wait for layout to update
+            yield return null;
+            
+            Vector3 targetPos = newInventorySlot.transform.position;
+            Sequence moveSequence = DOTween.Sequence();
+            moveSequence.Append(slotObj.transform.DOMove(targetPos, swapDuration).SetEase(swapEase));
+            moveSequence.Join(slotObj.transform.DOScale(0.8f, swapDuration * 0.5f).SetLoops(2, LoopType.Yoyo));
+            
+            yield return moveSequence.WaitForCompletion();
+            
+            // Add to inventory list
+            inventorySlots.Add(newInventorySlot);
+            newInventorySlot.AnimateAppearance();
+            
+            // Clear selected slot
+            selectedSlot.SetEmpty();
+            
+            // Update backend
+            yield return StartCoroutine(UpdateSelectedTowersToBackend());
+            
+            isSwapping = false;
+            
+            Debug.Log($"[InventoryUIManager] Moved tower '{itemData.towerName}' to inventory");
+        }
+        
+        /// <summary>
         /// Swap tower between selected slot and inventory slot
         /// </summary>
         private IEnumerator SwapBetweenSelectedAndInventory(TowerInventorySlot selectedSlot, TowerInventorySlot inventorySlot)
@@ -1039,14 +1296,18 @@ namespace TowerDefense.UI.Inventory
             }
             
             // Collect selected tower names from selectedSlots UI
+            // IMPORTANT: Use InventoryItem.towerName (backend name like "MachineGun1", "Emp1")
+            // NOT TowerData.towerName (prefab name like "EMP Generator", "Assault Cannon")
             List<string> selectedTowerNames = new List<string>();
             if (selectedSlots != null)
             {
                 foreach (var slot in selectedSlots)
                 {
-                    if (slot != null && !slot.IsEmpty && slot.TowerData != null)
+                    if (slot != null && !slot.IsEmpty && slot.InventoryItem != null)
                     {
-                        selectedTowerNames.Add(slot.TowerData.towerName);
+                        // Use InventoryItem.towerName which matches backend data
+                        selectedTowerNames.Add(slot.InventoryItem.towerName);
+                        Debug.Log($"[InventoryUIManager] UpdateSelectedTowersToBackend: Adding tower '{slot.InventoryItem.towerName}' to selection");
                     }
                 }
             }
@@ -1096,6 +1357,80 @@ namespace TowerDefense.UI.Inventory
         {
             Debug.Log("[InventoryUIManager] Inventory loaded event received");
             RefreshInventoryDisplay(inventory);
+        }
+        
+        /// <summary>
+        /// Get unlocked tower types based on player's maxLevel (same logic as LevelManager)
+        /// Level 1: Machine Gun
+        /// Level 2: Machine Gun + Rocket
+        /// Level 3: Machine Gun + Rocket + Emp
+        /// Level 4: Machine Gun + Rocket + Emp + Laser
+        /// </summary>
+        private HashSet<int> GetUnlockedTowerTypes()
+        {
+            HashSet<int> unlockedTypes = new HashSet<int>();
+            
+            // Get maxLevel from GameManager
+            int maxLevel = 1; // Default to level 1 (Machine Gun only)
+            if (TowerDefense.Game.GameManager.instanceExists)
+            {
+                maxLevel = TowerDefense.Game.GameManager.instance.GetMaxLevel();
+                // Ensure maxLevel is at least 1 (player always starts with Machine Gun)
+                if (maxLevel < 1)
+                {
+                    maxLevel = 1;
+                }
+            }
+            
+            // Level 1: Machine Gun (always unlocked)
+            unlockedTypes.Add((int)MainTower.MachineGun);
+            
+            // Level 2: Add Rocket
+            if (maxLevel >= 2)
+            {
+                unlockedTypes.Add((int)MainTower.Rocket);
+            }
+            
+            // Level 3: Add Emp
+            if (maxLevel >= 3)
+            {
+                unlockedTypes.Add((int)MainTower.Emp);
+            }
+            
+            // Level 4: Add Laser
+            if (maxLevel >= 4)
+            {
+                unlockedTypes.Add((int)MainTower.Laser);
+            }
+            
+            Debug.Log($"[InventoryUIManager] Unlocked towers for maxLevel {maxLevel}: {string.Join(", ", unlockedTypes)}");
+            return unlockedTypes;
+        }
+        
+        /// <summary>
+        /// Check if a tower is unlocked based on its towerType
+        /// </summary>
+        private bool IsTowerUnlocked(InventoryItemData item, HashSet<int> unlockedTowerTypes)
+        {
+            if (item == null || unlockedTowerTypes == null)
+                return false;
+            
+            // Check by towerType first (most reliable)
+            if (unlockedTowerTypes.Contains(item.towerType))
+            {
+                return true;
+            }
+            
+            // Fallback: Try to get tower from library and check mainTower
+            Tower tower = GetTowerFromLibrary(item.towerName, item.towerType);
+            if (tower != null)
+            {
+                return unlockedTowerTypes.Contains((int)tower.mainTower);
+            }
+            
+            // If can't determine, assume unlocked (to avoid hiding valid towers)
+            Debug.LogWarning($"[InventoryUIManager] Cannot determine if tower '{item.towerName}' (towerType={item.towerType}) is unlocked, assuming unlocked");
+            return true;
         }
         
         /// <summary>

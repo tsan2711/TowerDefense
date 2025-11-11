@@ -12,5 +12,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6e9d2c5f8b1a4e7c9f2e5d8c1b4f7a9e, type: 3}
   m_Name: TowerInventory
   m_EditorClassIdentifier: Assembly-CSharp::TowerDefense.Towers.Data.TowerInventory
-  selectedTowers: []
+  selectedTowers:
+  - {fileID: 8092069997328486706, guid: b9b94b84f719643e5bc03886cc14dee8, type: 3}
   towerLibrary: {fileID: 11400000, guid: f9a88c696ebce45318e1ae33adc9cfbc, type: 2}
