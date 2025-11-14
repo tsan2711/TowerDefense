@@ -22,7 +22,7 @@ MonoBehaviour:
   - towerName: Rocket Platform
     unlockedAt: 1762790341
     isSelected: 1
-    towerType: 0
+    towerType: 1
     usageCount: 0
   - towerName: EMP
     unlockedAt: 1762790344
@@ -30,4 +30,4 @@ MonoBehaviour:
     towerType: 0
     usageCount: 0
   maxSelectedTowers: 3
-  lastUpdated: 1762882677
+  lastUpdated: 1762968481

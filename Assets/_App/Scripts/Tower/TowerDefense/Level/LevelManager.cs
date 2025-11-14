@@ -730,6 +730,7 @@ namespace TowerDefense.Level
 
 		/// <summary>
 		/// Subscribe to inventory service events to refresh tower library when selected towers change
+		/// Also ensures inventory is reloaded from backend to get latest selected towers
 		/// </summary>
 		protected void SubscribeToInventoryEvents()
 		{
@@ -743,14 +744,108 @@ namespace TowerDefense.Level
 					inventoryService.OnSelectedTowersChanged += OnSelectedTowersChanged;
 					Debug.Log("[LevelManager] Subscribed to inventory events (OnInventoryLoaded, OnSelectedTowersChanged)");
 					
-					// If inventory is already loaded, refresh tower library immediately
-					var cachedInventory = inventoryService.GetCachedInventory();
-					if (cachedInventory != null && cachedInventory.ownedTowers != null && cachedInventory.ownedTowers.Count > 0)
-					{
-						Debug.Log("[LevelManager] Inventory already cached, refreshing tower library immediately");
-						FilterTowerLibraryBySelectedTowers();
-					}
+					// Always reload inventory from backend when entering level to ensure we have latest selected towers
+					// This is important because user may have changed selection in inventory UI before entering level
+					ReloadInventoryFromBackend();
 				}
+			}
+		}
+
+		/// <summary>
+		/// Reload inventory from backend to ensure we have latest selected towers
+		/// This is called when entering level to sync with backend data
+		/// </summary>
+		protected async void ReloadInventoryFromBackend()
+		{
+			var serviceLocator = ServiceLocator.Instance;
+			if (serviceLocator == null)
+			{
+				Debug.LogWarning("[LevelManager] ServiceLocator not available, cannot reload inventory");
+				// Fallback: try to use cached inventory if available
+				TryFilterWithCachedInventory();
+				return;
+			}
+
+			var authService = serviceLocator.GetService<Services.Core.IAuthService>();
+			if (authService == null || !authService.IsAuthenticated || authService.CurrentUser == null)
+			{
+				Debug.LogWarning("[LevelManager] User not authenticated, using cached inventory if available");
+				// Fallback: try to use cached inventory if available
+				TryFilterWithCachedInventory();
+				return;
+			}
+
+			var inventoryService = serviceLocator.GetService<Services.Core.IInventoryService>();
+			if (inventoryService == null)
+			{
+				Debug.LogWarning("[LevelManager] InventoryService not available, using cached inventory if available");
+				// Fallback: try to use cached inventory if available
+				TryFilterWithCachedInventory();
+				return;
+			}
+
+			try
+			{
+				string uid = authService.CurrentUser.UID;
+				Debug.Log($"[LevelManager] Reloading inventory from backend for user {uid} to ensure latest selected towers");
+				
+				// Reload inventory from backend - this will update cached inventory and fire OnInventoryLoaded event
+				var inventoryData = await inventoryService.LoadUserInventoryAsync(uid);
+				
+				if (inventoryData != null)
+				{
+					Debug.Log($"[LevelManager] ✅ Successfully reloaded inventory from backend: {inventoryData.ownedTowers.Count} towers owned");
+					
+					// Filter inventory by unlocked towers (based on maxLevel)
+					if (TowerDefense.Game.GameManager.instanceExists)
+					{
+						await TowerDefense.Game.GameManager.instance.FilterInventoryIfNeeded();
+					}
+					
+					// FilterTowerLibraryBySelectedTowers() will be called by OnInventoryLoaded event
+					// But we also call it here to ensure it happens even if event doesn't fire
+					FilterTowerLibraryBySelectedTowers();
+				}
+				else
+				{
+					Debug.LogWarning("[LevelManager] Failed to reload inventory from backend, using cached inventory");
+					TryFilterWithCachedInventory();
+				}
+			}
+			catch (System.Exception e)
+			{
+				Debug.LogError($"[LevelManager] Error reloading inventory from backend: {e.Message}");
+				// Fallback: try to use cached inventory if available
+				TryFilterWithCachedInventory();
+			}
+		}
+
+		/// <summary>
+		/// Try to filter tower library using cached inventory as fallback
+		/// </summary>
+		protected void TryFilterWithCachedInventory()
+		{
+			var serviceLocator = ServiceLocator.Instance;
+			if (serviceLocator == null)
+			{
+				return;
+			}
+
+			var inventoryService = serviceLocator.GetService<Services.Core.IInventoryService>();
+			if (inventoryService == null)
+			{
+				return;
+			}
+
+			var cachedInventory = inventoryService.GetCachedInventory();
+			if (cachedInventory != null && cachedInventory.ownedTowers != null && cachedInventory.ownedTowers.Count > 0)
+			{
+				Debug.Log("[LevelManager] Using cached inventory to filter tower library (fallback)");
+				FilterTowerLibraryBySelectedTowers();
+			}
+			else
+			{
+				Debug.LogWarning("[LevelManager] No cached inventory available, tower library will not be filtered. Waiting for inventory to load...");
 			}
 		}
 

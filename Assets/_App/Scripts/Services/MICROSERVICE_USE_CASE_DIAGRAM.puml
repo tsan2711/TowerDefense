@@ -1,0 +1,185 @@
+@startuml Microservice Architecture - Use Case Diagram
+
+!theme plain
+skinparam usecase {
+  BackgroundColor #E8F4F8
+  BorderColor #2E7D9A
+}
+skinparam actor {
+  BackgroundColor #FFF2CC
+  BorderColor #D6B656
+}
+skinparam package {
+  BackgroundColor #F5F5F5
+  BorderColor #999999
+}
+
+left to right direction
+
+actor Player as player
+actor System as system
+
+' Authentication Package
+package "Authentication Domain" {
+  usecase "Sign In with Google" as UC_SignInGoogle
+  usecase "Sign In with Email/Password" as UC_SignInEmail
+  usecase "Sign Up with Email/Password" as UC_SignUp
+  usecase "Sign Out" as UC_SignOut
+  usecase "Get Auth Token" as UC_GetToken
+}
+
+' User Data Package
+package "User Data Domain" {
+  usecase "Save User Data" as UC_SaveUserData
+  usecase "Load User Data" as UC_LoadUserData
+  usecase "Save Level Progress" as UC_SaveLevelProgress
+  usecase "Load Level Progress" as UC_LoadLevelProgress
+  usecase "Sync Level Progress" as UC_SyncLevelProgress
+}
+
+' Inventory Package
+package "Inventory Domain" {
+  usecase "Load Inventory" as UC_LoadInventory
+  usecase "Unlock Tower" as UC_UnlockTower
+  usecase "Select Towers" as UC_SelectTowers
+  usecase "Remove Tower" as UC_RemoveTower
+  usecase "Check Tower Ownership" as UC_CheckOwnership
+  usecase "Filter Inventory by Level" as UC_FilterInventory
+}
+
+' Inventory Config Package
+package "Inventory Config Domain" {
+  usecase "Load Inventory Config" as UC_LoadInventoryConfig
+  usecase "Check Unlock Requirements" as UC_CheckRequirements
+  usecase "Get Tower Config" as UC_GetTowerConfig
+}
+
+' Agent Configuration Package
+package "Agent Configuration Domain" {
+  usecase "Load Agent Configurations" as UC_LoadAgentConfig
+  usecase "Filter Agent by Type" as UC_FilterAgent
+}
+
+' Tower Data Package
+package "Tower Data Domain" {
+  usecase "Load Tower Data" as UC_LoadTowerData
+  usecase "Filter Tower by Type" as UC_FilterTower
+}
+
+' Level Management Package
+package "Level Management Domain" {
+  usecase "Load Level List" as UC_LoadLevelList
+  usecase "Load Level Library Config" as UC_LoadLevelLibrary
+  usecase "Filter Level by ID" as UC_FilterLevel
+}
+
+' Game Flow Package
+package "Game Flow" {
+  usecase "Start Game" as UC_StartGame
+  usecase "Select Level" as UC_SelectLevel
+  usecase "Play Level" as UC_PlayLevel
+  usecase "Complete Level" as UC_CompleteLevel
+  usecase "View Level Progress" as UC_ViewProgress
+  usecase "Load Game Data" as UC_LoadGameData
+}
+
+' Level Gameplay Package
+package "Level Gameplay" {
+  usecase "Build Towers" as UC_BuildTowers
+  usecase "Spawn Enemies" as UC_SpawnEnemies
+  usecase "Defend Base" as UC_DefendBase
+  usecase "Win Level" as UC_WinLevel
+  usecase "Lose Level" as UC_LoseLevel
+  usecase "Filter Tower Library" as UC_FilterTowerLibrary
+}
+
+' Player Use Cases
+player --> UC_SignInGoogle
+player --> UC_SignInEmail
+player --> UC_SignUp
+player --> UC_SignOut
+player --> UC_LoadUserData
+player --> UC_ViewProgress
+player --> UC_LoadInventory
+player --> UC_UnlockTower
+player --> UC_SelectTowers
+player --> UC_CheckOwnership
+player --> UC_CheckRequirements
+player --> UC_StartGame
+player --> UC_SelectLevel
+player --> UC_PlayLevel
+player --> UC_BuildTowers
+player --> UC_DefendBase
+
+' System Use Cases (Automatic)
+system --> UC_SaveUserData
+system --> UC_SaveLevelProgress
+system --> UC_LoadLevelProgress
+system --> UC_SyncLevelProgress
+system --> UC_GetToken
+system --> UC_LoadGameData
+system --> UC_LoadAgentConfig
+system --> UC_LoadTowerData
+system --> UC_LoadLevelList
+system --> UC_LoadLevelLibrary
+system --> UC_LoadInventoryConfig
+system --> UC_FilterInventory
+system --> UC_FilterTowerLibrary
+system --> UC_SpawnEnemies
+system --> UC_CompleteLevel
+system --> UC_WinLevel
+system --> UC_LoseLevel
+
+' Relationships
+UC_SignInGoogle ..> UC_GetToken : <<include>>
+UC_SignInEmail ..> UC_GetToken : <<include>>
+UC_SignUp ..> UC_SaveUserData : <<include>>
+UC_SignInGoogle ..> UC_LoadUserData : <<include>>
+UC_SignInEmail ..> UC_LoadUserData : <<include>>
+
+UC_StartGame ..> UC_LoadGameData : <<include>>
+UC_StartGame ..> UC_LoadUserData : <<include>>
+UC_StartGame ..> UC_LoadInventory : <<include>>
+UC_StartGame ..> UC_LoadLevelList : <<include>>
+
+UC_SelectLevel ..> UC_LoadLevelLibrary : <<include>>
+UC_SelectLevel ..> UC_LoadInventory : <<include>>
+
+UC_PlayLevel ..> UC_LoadLevelLibrary : <<include>>
+UC_PlayLevel ..> UC_FilterTowerLibrary : <<include>>
+UC_PlayLevel ..> UC_BuildTowers : <<include>>
+UC_PlayLevel ..> UC_SpawnEnemies : <<include>>
+UC_PlayLevel ..> UC_DefendBase : <<include>>
+
+UC_CompleteLevel ..> UC_SaveLevelProgress : <<include>>
+UC_CompleteLevel ..> UC_UnlockTower : <<extend>>
+UC_CompleteLevel ..> UC_SyncLevelProgress : <<include>>
+
+UC_UnlockTower ..> UC_CheckRequirements : <<include>>
+UC_UnlockTower ..> UC_GetTowerConfig : <<include>>
+
+UC_FilterInventory ..> UC_LoadLevelProgress : <<include>>
+UC_FilterTowerLibrary ..> UC_LoadInventory : <<include>>
+
+UC_WinLevel ..> UC_CompleteLevel : <<include>>
+UC_LoseLevel ..> UC_CompleteLevel : <<include>>
+
+note right of UC_SelectTowers
+  Maximum 3 towers
+  can be selected
+end note
+
+note right of UC_CompleteLevel
+  Automatically unlocks
+  next tower based on
+  level completion
+end note
+
+note right of UC_FilterInventory
+  System automatically
+  filters inventory based
+  on player's maxLevel
+end note
+
+@enduml
+
