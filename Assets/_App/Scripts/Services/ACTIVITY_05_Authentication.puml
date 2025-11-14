@@ -1,0 +1,100 @@
+@startuml Tower Defense - Authentication Flow
+
+!theme plain
+
+skinparam activity {
+  BackgroundColor #E8F4F8
+  BorderColor #2E7D9A
+  FontSize 11
+}
+skinparam activityStartEnd {
+  BackgroundColor #FFE6CC
+  BorderColor #D79B00
+  FontSize 11
+}
+skinparam activityDecision {
+  BackgroundColor #FFF2CC
+  BorderColor #D6B656
+  FontSize 10
+}
+skinparam partition {
+  BackgroundColor #F5F5F5
+  BorderColor #999999
+  FontSize 12
+  FontStyle bold
+}
+skinparam note {
+  BackgroundColor #FFF9E6
+  BorderColor #D6B656
+  FontSize 10
+}
+
+title 🔐 Authentication Flow
+
+start
+
+:Player opens game;
+
+if (Already authenticated?) then (yes)
+  :Get current user;
+  :Continue to main menu;
+  stop
+endif
+
+:Show Login Screen;
+
+partition "Choose Auth Method" {
+  if (Login method?) then (Google)
+    :Click Google Sign In;
+    :Open Google Auth;
+    :Select Google account;
+    :Get Google credentials;
+    
+  else (Email)
+    if (Action?) then (Sign In)
+      :Enter email & password;
+      :Validate credentials;
+      
+    else (Sign Up)
+      :Enter email & password;
+      :Validate email format;
+      :Validate password strength;
+      :Create new account;
+    endif
+  endif
+}
+
+partition "Firebase Authentication" {
+  :Authenticate with Firebase;
+  
+  if (Auth successful?) then (yes)
+    :Get Auth Token;
+    :Get User Info (uid, email);
+  else (no)
+    :Show error message;
+    :Return to Login Screen;
+    stop
+  endif
+}
+
+partition "Initialize User Data" {
+  if (New user?) then (yes)
+    :Create user document in Firestore;
+    :Initialize default inventory;
+    :Set maxLevel = 1;
+  else (no)
+    :Load existing user data;
+  endif
+  
+  :Load user inventory;
+  :Load level progress;
+  :Cache user data;
+}
+
+:Fire OnSignInSuccess event;
+:Navigate to Main Menu;
+
+stop
+
+@enduml
+

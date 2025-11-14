@@ -1,0 +1,124 @@
+    @startuml Tower Defense - Play Level Flow
+
+    !theme plain
+
+    skinparam activity {
+    BackgroundColor #E8F4F8
+    BorderColor #2E7D9A
+    FontSize 11
+    }
+    skinparam activityStartEnd {
+    BackgroundColor #FFE6CC
+    BorderColor #D79B00
+    FontSize 11
+    }
+    skinparam activityDecision {
+    BackgroundColor #FFF2CC
+    BorderColor #D6B656
+    FontSize 10
+    }
+    skinparam partition {
+    BackgroundColor #F5F5F5
+    BorderColor #999999
+    FontSize 12
+    FontStyle bold
+    }
+    skinparam note {
+    BackgroundColor #FFF9E6
+    BorderColor #D6B656
+    FontSize 10
+    }
+
+    title 🎯 Play Level Flow
+
+    start
+
+    :Player selects level;
+
+    partition "Level Preparation" {
+    :Get levelId;
+    :Check level unlock status;
+    
+    if (Level unlocked?) then (yes)
+        :Load Level Config;
+    else (no)
+        :Show locked message;
+        stop
+    endif
+    }
+
+    partition "Load Inventory" {
+    :Get selected towers (max 3);
+    :Get unlocked tower types by maxLevel;
+    
+    note right
+        Unlock Rules:
+        - MachineGun: Always unlocked
+        - Rocket: maxLevel >= 2
+        - Emp: maxLevel >= 3
+        - Laser: maxLevel >= 4
+    end note
+    }
+
+    partition "Build Tower Library" {
+    :Load tower prefabs;
+    :Filter by selected & unlocked;
+    :Create Tower Library;
+    }
+
+    partition "Initialize Level" {
+    :Load Level Scene;
+    :Initialize LevelManager;
+    :Set starting currency;
+    :Set level state = Building;
+    }
+
+    partition "Building Phase" {
+    repeat
+        :Player places tower;
+        
+        if (Enough currency?) then (yes)
+        :Deduct cost;
+        :Spawn tower;
+        else (no)
+        :Show insufficient funds;
+        endif
+        
+    repeat while (Start wave?) is (no)
+    ->yes;
+    }
+
+    :Set level state = Combat;
+
+    partition "Combat Phase" {
+    fork
+        :Spawn enemy waves;
+    fork again
+        :Towers auto-attack;
+    fork again
+        :Track enemy count;
+    end fork
+    
+    repeat
+        if (All bases destroyed?) then (yes)
+        :Level state = Lose;
+        stop
+        endif
+    repeat while (Enemies remaining?) is (yes)
+    ->no;
+    }
+
+    if (All enemies defeated?) then (yes)
+    :Level state = Win;
+    :Calculate stars (1-3);
+    else (no)
+    :Level state = Lose;
+    :Stars = 0;
+    endif
+
+    :Complete Level;
+
+    stop
+
+    @enduml
+

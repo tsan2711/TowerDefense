@@ -16,7 +16,7 @@ MonoBehaviour:
   ownedTowers:
   - towerName: MachineGun1
     unlockedAt: 1762573750
-    isSelected: 1
+    isSelected: 0
     towerType: 2
     usageCount: 1
   - towerName: Rocket Platform
@@ -30,4 +30,4 @@ MonoBehaviour:
     towerType: 0
     usageCount: 0
   maxSelectedTowers: 3
-  lastUpdated: 1762968481
+  lastUpdated: 1763100392

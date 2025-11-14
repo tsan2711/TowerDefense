@@ -1,0 +1,215 @@
+@startuml Tower Defense - Inventory Management Sequence
+
+!theme plain
+
+skinparam sequence {
+  ArrowColor #2E7D9A
+  ActorBorderColor #2E7D9A
+  LifeLineBorderColor #2E7D9A
+  LifeLineBackgroundColor #E8F4F8
+  
+  ParticipantBorderColor #2E7D9A
+  ParticipantBackgroundColor #E8F4F8
+  ParticipantFontSize 12
+  
+  ActorBackgroundColor #FFE6CC
+  ActorFontSize 12
+}
+
+skinparam note {
+  BackgroundColor #FFF9E6
+  BorderColor #D6B656
+  FontSize 10
+}
+
+title 🎒 Inventory Management Sequence
+
+actor Player
+participant "Inventory\nUI" as UI
+participant "Inventory\nService" as Inventory
+participant "UserData\nService" as UserData
+participant "TowerData\nService" as TowerData
+database "Firestore" as DB
+
+Player -> UI: Open Inventory
+activate UI
+
+== Load Inventory ==
+UI -> Inventory: GetUserInventory()
+activate Inventory
+
+alt Inventory Cached
+  Inventory -> Inventory: GetFromCache()
+  Inventory --> UI: Cached inventory data
+  
+else Not Cached
+  Inventory -> DB: Query inventory/{uid}
+  activate DB
+  
+  note over DB
+    Load:
+    - Owned towers
+    - Selected towers
+    - Unlock timestamps
+  end note
+  
+  DB --> Inventory: Inventory data
+  deactivate DB
+  
+  Inventory -> Inventory: CacheInventory()
+  Inventory --> UI: Fresh inventory data
+end
+
+== Display Towers ==
+UI -> TowerData: GetAllTowerConfigs()
+activate TowerData
+TowerData --> UI: Tower configs
+deactivate TowerData
+
+UI -> UserData: GetMaxLevel()
+activate UserData
+UserData --> UI: maxLevel
+deactivate UserData
+
+UI -> UI: RenderInventory(owned, unlocked, selected)
+
+UI --> Player: Display owned towers
+note right of Player
+  Shows:
+  - Owned towers (selectable)
+  - Locked towers (grayed out)
+  - Selected towers (highlighted)
+  - Max 3 selection indicator
+end note
+
+== Select/Deselect Towers ==
+Player -> UI: Click tower to select/deselect
+UI -> UI: ToggleSelection(tower)
+
+UI -> UI: GetSelectedCount()
+
+alt Valid Selection (≤ 3)
+  UI -> Inventory: UpdateSelectedTowers(selectedList)
+  
+  Inventory -> Inventory: ValidateSelection()
+  
+  alt Valid
+    Inventory -> DB: Update inventory/{uid}/selectedTowers
+    activate DB
+    
+    note over DB
+      Save selected towers array:
+      [towerName1, towerName2, towerName3]
+    end note
+    
+    DB --> Inventory: Selection saved
+    deactivate DB
+    
+    Inventory -> Inventory: UpdateCache()
+    Inventory -> Inventory: FireOnSelectedTowersChanged()
+    
+    Inventory --> UI: Selection updated
+    UI --> Player: Selection confirmed ✓
+    
+  else Invalid Selection
+    Inventory --> UI: Validation error
+    UI --> Player: Show error
+  end
+  
+else Invalid Selection (> 3)
+  UI -> UI: RevertSelection()
+  UI --> Player: "Error: Max 3 towers can be selected"
+  
+  note right of Player
+    Selection is reverted
+    to previous state
+  end note
+end
+
+== Unlock Tower (Optional) ==
+opt Player wants to unlock a tower
+  Player -> UI: Click "Unlock" on locked tower
+  
+  UI -> TowerData: GetTowerConfig(towerName)
+  activate TowerData
+  TowerData --> UI: Tower unlock requirements
+  deactivate TowerData
+  
+  UI -> UserData: GetMaxLevel()
+  activate UserData
+  UserData --> UI: currentMaxLevel
+  deactivate UserData
+  
+  UI -> UI: CheckUnlockRequirements(tower, maxLevel)
+  
+  alt Requirements Met
+    UI -> Inventory: IsOwned(towerName)
+    
+    alt Not Owned
+      UI -> Player: Confirm unlock?
+      Player -> UI: Confirm
+      
+      UI -> Inventory: UnlockTower(towerName)
+      
+      Inventory -> Inventory: AddToInventory(tower)
+      
+      Inventory -> DB: Save inventory/{uid}
+      activate DB
+      
+      note over DB
+        Add new tower:
+        {
+          towerName: "...",
+          towerType: "...",
+          isSelected: false,
+          unlockedAt: timestamp
+        }
+      end note
+      
+      DB --> Inventory: Tower added
+      deactivate DB
+      
+      Inventory -> Inventory: UpdateCache()
+      Inventory -> Inventory: FireOnTowerUnlocked(tower)
+      
+      Inventory --> UI: Tower unlocked successfully
+      UI --> Player: "🎉 Tower Unlocked!"
+      
+      UI -> UI: RefreshInventory()
+      
+    else Already Owned
+      Inventory --> UI: Tower already owned
+      UI --> Player: "You already own this tower"
+    end
+    
+  else Requirements Not Met
+    UI --> Player: Show requirements
+    
+    note right of Player
+      Example:
+      "Unlock Laser Tower:
+      - Reach Level 4
+      - Complete Level 3"
+    end note
+  end
+end
+
+== Update UI ==
+UI -> Inventory: GetUserInventory()
+Inventory --> UI: Updated inventory
+
+UI -> UI: RefreshDisplay()
+UI --> Player: Updated inventory view
+
+deactivate Inventory
+deactivate UI
+
+note over Player
+  Player can now:
+  - View updated inventory
+  - Select different towers
+  - Start a level with selection
+end note
+
+@enduml
+

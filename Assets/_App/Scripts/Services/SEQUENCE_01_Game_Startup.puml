@@ -1,0 +1,152 @@
+@startuml Tower Defense - Game Startup Sequence
+
+!theme plain
+
+skinparam sequence {
+  ArrowColor #2E7D9A
+  ActorBorderColor #2E7D9A
+  LifeLineBorderColor #2E7D9A
+  LifeLineBackgroundColor #E8F4F8
+  
+  ParticipantBorderColor #2E7D9A
+  ParticipantBackgroundColor #E8F4F8
+  ParticipantFontSize 12
+  
+  ActorBackgroundColor #FFE6CC
+  ActorFontSize 12
+}
+
+skinparam note {
+  BackgroundColor #FFF9E6
+  BorderColor #D6B656
+  FontSize 10
+}
+
+title 🎮 Game Startup Sequence
+
+actor Player
+participant "Game\nManager" as GM
+participant "Services\nBootstrap" as Bootstrap
+participant "Service\nLocator" as Locator
+participant "Auth\nService" as Auth
+participant "UserData\nService" as UserData
+participant "Inventory\nService" as Inventory
+participant "LevelManagement\nService" as LevelMgmt
+participant "TowerData\nService" as TowerData
+database "Firestore" as DB
+
+Player -> GM: Launch Game
+activate GM
+
+== Service Initialization ==
+GM -> Bootstrap: Initialize()
+activate Bootstrap
+
+Bootstrap -> Locator: Register(AuthService)
+Bootstrap -> Locator: Register(UserDataService)
+Bootstrap -> Locator: Register(InventoryService)
+Bootstrap -> Locator: Register(LevelManagementService)
+Bootstrap -> Locator: Register(TowerDataService)
+
+note right of Bootstrap
+  All services registered
+  and ready to use
+end note
+
+Bootstrap --> GM: Services Ready
+deactivate Bootstrap
+
+== Authentication Check ==
+GM -> Auth: IsUserAuthenticated()
+activate Auth
+Auth --> GM: true, CurrentUser, Token
+deactivate Auth
+
+note right of Auth
+  If not authenticated,
+  player is redirected to
+  login screen (flow ends here)
+end note
+
+== Load Game Configuration ==
+GM -> LevelMgmt: LoadLevelList()
+activate LevelMgmt
+LevelMgmt -> DB: Query levels collection
+DB --> LevelMgmt: Level configs
+LevelMgmt --> GM: Level list loaded
+deactivate LevelMgmt
+
+GM -> TowerData: LoadTowerData()
+activate TowerData
+TowerData -> TowerData: Load from Resources
+TowerData --> GM: Tower data loaded
+deactivate TowerData
+
+GM -> Inventory: LoadInventoryConfig()
+activate Inventory
+Inventory -> Inventory: Load from Resources
+Inventory --> GM: Inventory config loaded
+deactivate Inventory
+
+GM -> GM: LoadAgentConfig()
+
+== Load User Data ==
+GM -> UserData: GetCurrentUser()
+activate UserData
+UserData -> DB: Query users/{uid}
+activate DB
+DB --> UserData: User profile
+deactivate DB
+
+UserData --> GM: User profile data
+deactivate UserData
+
+GM -> LevelMgmt: LoadLevelProgress(uid)
+activate LevelMgmt
+LevelMgmt -> DB: Query levelProgress/{uid}
+activate DB
+DB --> LevelMgmt: Progress data
+deactivate DB
+LevelMgmt --> GM: Progress loaded
+deactivate LevelMgmt
+
+GM -> Inventory: LoadUserInventory(uid)
+activate Inventory
+Inventory -> DB: Query inventory/{uid}
+activate DB
+DB --> Inventory: Inventory data
+deactivate DB
+Inventory --> GM: Inventory loaded
+deactivate Inventory
+
+== Sync & Filter ==
+GM -> LevelMgmt: GetMaxLevel()
+activate LevelMgmt
+LevelMgmt --> GM: maxLevel
+deactivate LevelMgmt
+
+GM -> Inventory: FilterByMaxLevel(maxLevel)
+activate Inventory
+Inventory -> Inventory: Apply unlock rules
+Inventory --> GM: Filtered inventory
+deactivate Inventory
+
+GM -> UserData: SyncToCloud()
+activate UserData
+UserData -> DB: Update user data
+DB --> UserData: Sync complete
+deactivate UserData
+
+== Show Main Menu ==
+GM -> Player: Display Main Menu
+deactivate GM
+
+note over Player
+  Player can now:
+  - Select Level
+  - View Inventory
+  - Check Profile
+end note
+
+@enduml
+

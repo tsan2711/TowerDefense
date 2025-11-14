@@ -1,0 +1,97 @@
+@startuml Authentication Flow
+
+!theme plain
+skinparam activity {
+  BackgroundColor #E8F4F8
+  BorderColor #2E7D9A
+  FontSize 12
+}
+skinparam activityStartEnd {
+  BackgroundColor #FFE6CC
+  BorderColor #D79B00
+  FontSize 12
+}
+skinparam activityDecision {
+  BackgroundColor #FFF2CC
+  BorderColor #D6B656
+  FontSize 11
+}
+skinparam partition {
+  BackgroundColor #F5F5F5
+  BorderColor #999999
+  FontSize 12
+}
+
+start
+
+:Player opens game;
+
+if (User authenticated?) then (yes)
+  :Get current user;
+  :Load cached user data;
+  :Continue to main menu;
+  stop
+else (no)
+endif
+
+:Show Login Screen;
+
+if (Login method?) then (Google)
+  :Sign In with Google;
+  
+  partition "Google Sign In" {
+    :Initialize Google Sign In;
+    :Request authentication;
+    :Get Google credentials;
+    :Authenticate with Firebase;
+  }
+  
+else (Email/Password)
+  if (Action?) then (Sign In)
+    :Enter email and password;
+    :Sign In with Email/Password;
+    
+    partition "Email Sign In" {
+      :Validate credentials;
+      :Authenticate with Firebase;
+    }
+    
+  else (Sign Up)
+    :Enter email and password;
+    :Sign Up with Email/Password;
+    
+    partition "Email Sign Up" {
+      :Validate email format;
+      :Validate password strength;
+      :Create new account;
+      :Authenticate with Firebase;
+    }
+  endif
+endif
+
+partition "Post Authentication" {
+  :Get Auth Token;
+  :Get User Info;
+  :Save User Data to Firestore;
+  :Load User Data;
+  :Load User Inventory;
+  :Initialize Inventory\nif new user;
+  :Load Level Progress;
+}
+
+if (Authentication successful?) then (yes)
+  :Fire OnSignInSuccess event;
+  :Update UI with user info;
+  :Navigate to Main Menu;
+else (no)
+  :Fire OnSignInFailed event;
+  :Show error message;
+  :Return to Login Screen;
+endif
+
+stop
+
+@enduml
+
+
+

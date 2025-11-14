@@ -1,235 +1,438 @@
-@startuml Microservice Architecture - Class Diagram
+@startuml Tower Defense - Class Diagram
 
 !theme plain
+
+skinparam class {
+  BackgroundColor #E8F4F8
+  BorderColor #2E7D9A
+  ArrowColor #2E7D9A
+  FontSize 10
+}
+
+skinparam interface {
+  BackgroundColor #FFF2CC
+  BorderColor #D6B656
+  FontSize 10
+}
+
+skinparam abstract {
+  BackgroundColor #E8F5E9
+  BorderColor #4CAF50
+}
+
 skinparam classAttributeIconSize 0
 skinparam shadowing false
 skinparam linetype ortho
+skinparam packageStyle rectangle
+skinparam maxMessageSize 60
+skinparam packagePadding 10
+skinparam defaultFontSize 10
 
-' Base Layer
-interface IService {
-  +Initialize()
-  +IsInitialized : bool
-  +Shutdown()
+' ============================================
+' LAYER 1: CORE INTERFACES
+' ============================================
+package "Core Layer" #FAFAFA {
+  
+  interface IService {
+    +Initialize() : void
+    +IsInitialized : bool
+    +Shutdown() : void
+  }
+  
+  abstract class FirestoreServiceBase {
+    #firestore : FirebaseFirestore
+    #isInitialized : bool
+    +Initialize() : void
+    +Shutdown() : void
+    #InitializeFirestoreInstance() : void
+    #GetServiceName() : string
+  }
+  
+  FirestoreServiceBase ..|> IService
 }
 
-abstract class FirestoreServiceBase {
-  #firestore : FirebaseFirestore
-  #isInitialized : bool
-  +Initialize()
-  +Shutdown()
-  #InitializeFirestoreInstance()
-  #GetServiceName() : string
+' ============================================
+' LAYER 2: DOMAIN SERVICES
+' ============================================
+
+' Authentication Domain
+package "🔐 Authentication" #FFF9E6 {
+  
+  interface IAuthService {
+    +SignInWithGoogleAsync() : Task<AuthResult>
+    +SignInWithEmailAsync(email, password) : Task<AuthResult>
+    +SignUpAsync(email, password) : Task<AuthResult>
+    +SignOutAsync() : Task
+    +IsAuthenticated : bool
+    +CurrentUser : UserInfo
+    +GetAuthTokenAsync() : Task<string>
+    +OnSignInSuccess : event
+    +OnSignInFailed : event
+    +OnSignOut : event
+  }
+  
+  class FirebaseAuthService {
+    -auth : FirebaseAuth
+    -currentUser : UserInfo
+    +SignInWithGoogleAsync() : Task<AuthResult>
+    +SignInWithEmailAsync(email, password) : Task<AuthResult>
+    +SignUpAsync(email, password) : Task<AuthResult>
+    +SignOutAsync() : Task
+    +IsAuthenticated : bool
+    +CurrentUser : UserInfo
+    +GetAuthTokenAsync() : Task<string>
+    -HandleAuthResult(result) : void
+  }
+  
+  IAuthService <|.. FirebaseAuthService
 }
 
-' Service Interfaces
-interface IAgentConfigurationService {
-  +LoadAgentConfigurationsAsync() : Task<Dictionary>
-  +FilterByType(type) : List
+' User Management Domain
+package "👤 User Management" #E8F5F9 {
+  
+  interface IUserDataService {
+    +SaveUserDataAsync(uid, data) : Task<bool>
+    +LoadUserDataAsync(uid) : Task<UserData>
+    +SaveLevelProgressAsync(uid, levelId, stars, maxLevel) : Task<bool>
+    +LoadLevelProgressAsync(uid) : Task<LevelProgress>
+    +SyncProgressAsync(uid) : Task<bool>
+    +GetCachedUserData() : UserData
+    +OnUserDataLoaded : event
+  }
+  
+  class UserDataService {
+    -cachedUserData : UserData
+    +SaveUserDataAsync(uid, data) : Task<bool>
+    +LoadUserDataAsync(uid) : Task<UserData>
+    +SaveLevelProgressAsync(uid, levelId, stars, maxLevel) : Task<bool>
+    +LoadLevelProgressAsync(uid) : Task<LevelProgress>
+    +SyncProgressAsync(uid) : Task<bool>
+    +GetCachedUserData() : UserData
+    #GetServiceName() : string
+  }
+  
+  class UserData {
+    +uid : string
+    +email : string
+    +displayName : string
+    +maxLevel : int
+    +levelProgress : Dictionary<int, int>
+    +createdAt : DateTime
+    +lastLoginAt : DateTime
+  }
+  
+  IUserDataService <|.. UserDataService
+  FirestoreServiceBase <|-- UserDataService
+  UserDataService "1" *-- "1" UserData : manages
 }
 
-interface ITowerDataService {
-  +LoadTowerLevelDataAsync() : Task<Dictionary>
-  +FilterByType(type) : List
+' Inventory Domain
+package "🎒 Inventory" #F3E5F5 {
+  
+  interface IInventoryService {
+    +LoadUserInventoryAsync(uid) : Task<TowerInventoryData>
+    +UnlockTowerAsync(uid, towerName) : Task<bool>
+    +SelectTowersAsync(uid, towerNames) : Task<bool>
+    +RemoveTowerAsync(uid, towerName) : Task<bool>
+    +GetCachedInventory() : TowerInventoryData
+    +HasTower(towerName) : bool
+    +GetSelectedTowers() : List<string>
+    +OnInventoryLoaded : event
+    +OnSelectedTowersChanged : event
+    +OnTowerUnlocked : event
+  }
+  
+  class InventoryService {
+    -cachedInventory : TowerInventoryData
+    +LoadUserInventoryAsync(uid) : Task<TowerInventoryData>
+    +UnlockTowerAsync(uid, towerName) : Task<bool>
+    +SelectTowersAsync(uid, towerNames) : Task<bool>
+    +RemoveTowerAsync(uid, towerName) : Task<bool>
+    +GetCachedInventory() : TowerInventoryData
+    +HasTower(towerName) : bool
+    +GetSelectedTowers() : List<string>
+    -ValidateSelection(towerNames) : bool
+    #GetServiceName() : string
+  }
+  
+  interface IInventoryConfigService {
+    +LoadInventoryConfigAsync() : Task<Dictionary>
+    +GetTowerConfig(towerName) : InventoryConfigData
+    +CanUnlockTower(towerName, level, currency) : bool
+    +CheckUnlockRequirements(towerName, userLevel) : bool
+    +OnInventoryConfigLoaded : event
+  }
+  
+  class InventoryConfigService {
+    -configCache : Dictionary<string, InventoryConfigData>
+    +LoadInventoryConfigAsync() : Task<Dictionary>
+    +GetTowerConfig(towerName) : InventoryConfigData
+    +CanUnlockTower(towerName, level, currency) : bool
+    +CheckUnlockRequirements(towerName, userLevel) : bool
+    #GetServiceName() : string
+  }
+  
+  class TowerInventoryData {
+    +ownedTowers : List<InventoryItemData>
+    +selectedTowers : List<string>
+    +maxSelectionCount : int
+  }
+  
+  class InventoryItemData {
+    +towerName : string
+    +isOwned : bool
+    +isSelected : bool
+    +unlockedAt : DateTime
+  }
+  
+  class InventoryConfigData {
+    +towerName : string
+    +unlockLevel : int
+    +unlockCost : int
+    +description : string
+  }
+  
+  IInventoryService <|.. InventoryService
+  IInventoryConfigService <|.. InventoryConfigService
+  FirestoreServiceBase <|-- InventoryService
+  FirestoreServiceBase <|-- InventoryConfigService
+  InventoryService "1" *-- "1" TowerInventoryData : manages
+  TowerInventoryData "1" *-- "*" InventoryItemData : contains
 }
 
-interface ILevelManagementService {
-  +LoadLevelListAsync() : Task<LevelList>
-  +LoadLevelLibraryConfigAsync() : Task<Dictionary>
-  +FilterByLevelId(levelId) : List
+' Level Management Domain
+package "🗺️ Level Management" #E8F5E9 {
+  
+  interface ILevelManagementService {
+    +LoadLevelListAsync() : Task<LevelList>
+    +LoadLevelLibraryConfigAsync(levelId) : Task<LevelLibraryConfig>
+    +GetLevelById(levelId) : LevelData
+    +IsLevelUnlocked(levelId, maxLevel) : bool
+    +OnLevelListLoaded : event
+  }
+  
+  class LevelManagementService {
+    -levelListCache : LevelList
+    +LoadLevelListAsync() : Task<LevelList>
+    +LoadLevelLibraryConfigAsync(levelId) : Task<LevelLibraryConfig>
+    +GetLevelById(levelId) : LevelData
+    +IsLevelUnlocked(levelId, maxLevel) : bool
+    #GetServiceName() : string
+  }
+  
+  class LevelList {
+    +levels : List<LevelData>
+  }
+  
+  class LevelData {
+    +levelId : int
+    +levelName : string
+    +sceneName : string
+    +requiredLevel : int
+    +difficulty : int
+  }
+  
+  class LevelLibraryConfig {
+    +levelId : int
+    +availableTowers : List<string>
+    +enemyWaves : List<WaveConfig>
+  }
+  
+  ILevelManagementService <|.. LevelManagementService
+  FirestoreServiceBase <|-- LevelManagementService
+  LevelManagementService "1" *-- "1" LevelList : manages
+  LevelList "1" *-- "*" LevelData : contains
 }
 
-interface IUserDataService {
-  +SaveUserDataAsync(uid, data) : Task<bool>
-  +LoadUserDataAsync(uid) : Task<UserData>
-  +SaveLevelProgressAsync(uid, levelId, stars, maxLevel) : Task<bool>
-  +LoadLevelProgressAsync(uid) : Task<Tuple>
+' Tower & Agent Domain
+package "🗼 Tower & Agent" #FFF3E0 {
+  
+  interface ITowerDataService {
+    +LoadTowerDataAsync() : Task<Dictionary>
+    +GetTowerData(towerName) : TowerData
+    +FilterByType(towerType) : List<TowerData>
+    +OnTowerDataLoaded : event
+  }
+  
+  class TowerDataService {
+    -towerDataCache : Dictionary<string, TowerData>
+    +LoadTowerDataAsync() : Task<Dictionary>
+    +GetTowerData(towerName) : TowerData
+    +FilterByType(towerType) : List<TowerData>
+    #GetServiceName() : string
+  }
+  
+  class TowerData {
+    +towerName : string
+    +towerType : MainTower
+    +damage : int
+    +range : float
+    +fireRate : float
+    +cost : int
+  }
+  
+  interface IAgentConfigurationService {
+    +LoadAgentConfigurationsAsync() : Task<Dictionary>
+    +GetAgentConfig(agentName) : AgentConfig
+    +FilterByType(agentType) : List<AgentConfig>
+    +OnAgentConfigLoaded : event
+  }
+  
+  class AgentConfigurationService {
+    -agentConfigCache : Dictionary<string, AgentConfig>
+    +LoadAgentConfigurationsAsync() : Task<Dictionary>
+    +GetAgentConfig(agentName) : AgentConfig
+    +FilterByType(agentType) : List<AgentConfig>
+    #GetServiceName() : string
+  }
+  
+  class AgentConfig {
+    +agentName : string
+    +agentType : string
+    +health : int
+    +speed : float
+    +reward : int
+  }
+  
+  ITowerDataService <|.. TowerDataService
+  IAgentConfigurationService <|.. AgentConfigurationService
+  FirestoreServiceBase <|-- TowerDataService
+  FirestoreServiceBase <|-- AgentConfigurationService
 }
 
-interface IInventoryService {
-  +LoadUserInventoryAsync(uid) : Task<TowerInventoryData>
-  +UnlockTowerAsync(uid, towerName) : Task<bool>
-  +SelectTowersAsync(uid, towerNames) : Task<bool>
-  +GetCachedInventory() : TowerInventoryData
-  +HasTower(towerName) : bool
-  +OnInventoryLoaded : event
-  +OnSelectedTowersChanged : event
+' ============================================
+' LAYER 3: SERVICE INFRASTRUCTURE
+' ============================================
+package "⚙️ Service Infrastructure" #ECEFF1 {
+  
+  class ServiceLocator {
+    -instance : ServiceLocator
+    -services : Dictionary<Type, IService>
+    +{static} Instance : ServiceLocator
+    +RegisterService<T>(service : T) : void
+    +GetService<T>() : T
+    +UnregisterService<T>() : void
+    +IsServiceRegistered<T>() : bool
+    +InitializeAllServices() : void
+    +ShutdownAllServices() : void
+  }
+  
+  class ServicesBootstrap {
+    -autoInitializeOnAwake : bool
+    +InitializeServices() : void
+    -RegisterAllServices() : void
+    -InitializeAuthService() : void
+    -InitializeUserDataService() : void
+    -InitializeInventoryService() : void
+    -InitializeInventoryConfigService() : void
+    -InitializeLevelManagementService() : void
+    -InitializeTowerDataService() : void
+    -InitializeAgentConfigService() : void
+  }
+  
+  ServiceLocator o-- IService : manages
+  ServicesBootstrap ..> ServiceLocator : registers to
 }
 
-interface IInventoryConfigService {
-  +LoadInventoryConfigAsync() : Task<Dictionary>
-  +GetTowerConfig(towerName) : InventoryConfigData
-  +CanUnlockTower(towerName, level, currency) : bool
-  +OnInventoryConfigLoaded : event
+' ============================================
+' LAYER 4: GAME LOGIC (CONSUMERS)
+' ============================================
+package "🎮 Game Controllers" #E3F2FD {
+  
+  class GameManager {
+    -authService : IAuthService
+    -userDataService : IUserDataService
+    -inventoryService : IInventoryService
+    -levelService : ILevelManagementService
+    +Initialize() : void
+    +StartGame() : void
+    +LoadPlayerData() : Task
+    +CompleteLevel(levelId, stars) : void
+    +GetMaxLevel() : int
+    +OnGameReady : event
+  }
+  
+  class LevelManager {
+    -inventoryService : IInventoryService
+    -towerDataService : ITowerDataService
+    -levelLibrary : LevelLibraryConfig
+    -towerLibrary : TowerLibrary
+    -levelState : LevelState
+    -currency : Currency
+    +InitializeLevel(levelId) : Task
+    +StartLevel() : void
+    +BuildTower(towerName, position) : bool
+    +UpgradeTower(tower) : bool
+    +SellTower(tower) : bool
+    +CompleteLevel(isWin) : void
+    -FilterTowerLibrary() : void
+  }
+  
+  class TowerLibrary {
+    +availableTowers : Dictionary<string, TowerPrefab>
+    +AddTower(towerName, prefab) : void
+    +GetTower(towerName) : TowerPrefab
+    +FilterBySelected(selectedTowers) : void
+  }
+  
+  enum LevelState {
+    Intro
+    Building
+    SpawningEnemies
+    AllEnemiesSpawned
+    Win
+    Lose
+  }
+  
+  LevelManager "1" *-- "1" TowerLibrary : uses
+  LevelManager "1" -- "1" LevelState : has
 }
 
-interface IAuthService {
-  +SignInWithGoogleAsync() : Task<AuthResult>
-  +SignInWithEmailAsync(email, password) : Task<AuthResult>
-  +SignOutAsync() : Task
-  +IsAuthenticated : bool
-  +CurrentUser : UserInfo
-  +GetAuthTokenAsync() : Task<string>
-  +OnSignInSuccess : event
-  +OnSignOut : event
-}
+' ============================================
+' CROSS-PACKAGE RELATIONSHIPS
+' ============================================
 
-' Service Implementations
-class AgentConfigurationService {
-  +LoadAgentConfigurationsAsync() : Task<Dictionary>
-  +FilterByType(type) : List
-  #GetServiceName() : string
-}
-
-class TowerDataService {
-  +LoadTowerLevelDataAsync() : Task<Dictionary>
-  +FilterByType(type) : List
-  #GetServiceName() : string
-}
-
-class LevelManagementService {
-  +LoadLevelListAsync() : Task<LevelList>
-  +LoadLevelLibraryConfigAsync() : Task<Dictionary>
-  +FilterByLevelId(levelId) : List
-  #GetServiceName() : string
-}
-
-class UserDataService {
-  +SaveUserDataAsync(uid, data) : Task<bool>
-  +LoadUserDataAsync(uid) : Task<UserData>
-  +SaveLevelProgressAsync(uid, levelId, stars, maxLevel) : Task<bool>
-  +LoadLevelProgressAsync(uid) : Task<Tuple>
-  #GetServiceName() : string
-}
-
-class InventoryService {
-  +LoadUserInventoryAsync(uid) : Task<TowerInventoryData>
-  +UnlockTowerAsync(uid, towerName) : Task<bool>
-  +SelectTowersAsync(uid, towerNames) : Task<bool>
-  +GetCachedInventory() : TowerInventoryData
-  +HasTower(towerName) : bool
-  #GetServiceName() : string
-}
-
-class InventoryConfigService {
-  +LoadInventoryConfigAsync() : Task<Dictionary>
-  +GetTowerConfig(towerName) : InventoryConfigData
-  +CanUnlockTower(towerName, level, currency) : bool
-  #GetServiceName() : string
-}
-
-class FirebaseAuthService {
-  +SignInWithGoogleAsync() : Task<AuthResult>
-  +SignInWithEmailAsync(email, password) : Task<AuthResult>
-  +SignOutAsync() : Task
-  +IsAuthenticated : bool
-  +CurrentUser : UserInfo
-  +GetAuthTokenAsync() : Task<string>
-}
-
-' Service Management
-class ServiceLocator {
-  -instance : ServiceLocator
-  -services : Dictionary<Type, IService>
-  +Instance : ServiceLocator
-  +RegisterService<T>(service) : void
-  +GetService<T>() : T
-  +UnregisterService<T>() : void
-  +IsServiceRegistered<T>() : bool
-  +InitializeAllServices() : void
-  +ShutdownAllServices() : void
-}
-
-class ServicesBootstrap {
-  -autoInitializeOnAwake : bool
-  +InitializeServices() : void
-  -InitializeAgentConfigurationService() : void
-  -InitializeTowerDataService() : void
-  -InitializeLevelManagementService() : void
-  -InitializeUserDataService() : void
-  -InitializeInventoryService() : void
-  -InitializeInventoryConfigService() : void
-  -InitializeAuthService() : void
-}
-
-' Game Managers (Consumers)
-class GameManager {
-  -levelList : LevelList
-  -m_DataStore : GameDataStore
-  +CompleteLevel(levelId, stars) : void
-  +IsLevelCompleted(levelId) : bool
-  +GetMaxLevel() : int
-  +LoadLevelProgressFromDB() : void
-  +LoadInventoryFromDB() : void
-  +FilterInventoryIfNeeded() : Task
-}
-
-class LevelManager {
-  -towerLibrary : TowerLibrary
-  -levelState : LevelState
-  -currency : Currency
-  +IncrementNumberOfEnemies() : void
-  +DecrementNumberOfEnemies() : void
-  +BuildingCompleted() : void
-  +FilterTowerLibraryBySelectedTowers() : void
-}
-
-' Relationships
-IService <|.. IAgentConfigurationService
-IService <|.. ITowerDataService
-IService <|.. ILevelManagementService
-IService <|.. IUserDataService
-IService <|.. IInventoryService
-IService <|.. IInventoryConfigService
-IService <|.. IAuthService
-
-FirestoreServiceBase ..|> IService
-FirestoreServiceBase <|-- AgentConfigurationService
-FirestoreServiceBase <|-- TowerDataService
-FirestoreServiceBase <|-- LevelManagementService
-FirestoreServiceBase <|-- UserDataService
-FirestoreServiceBase <|-- InventoryService
-FirestoreServiceBase <|-- InventoryConfigService
-
-IAgentConfigurationService <|.. AgentConfigurationService
-ITowerDataService <|.. TowerDataService
-ILevelManagementService <|.. LevelManagementService
-IUserDataService <|.. UserDataService
-IInventoryService <|.. InventoryService
-IInventoryConfigService <|.. InventoryConfigService
-IAuthService <|.. FirebaseAuthService
-
-ServiceLocator o-- IService : manages
-ServicesBootstrap ..> ServiceLocator : uses
-ServicesBootstrap ..> AgentConfigurationService : creates
-ServicesBootstrap ..> TowerDataService : creates
-ServicesBootstrap ..> LevelManagementService : creates
-ServicesBootstrap ..> UserDataService : creates
-ServicesBootstrap ..> InventoryService : creates
-ServicesBootstrap ..> InventoryConfigService : creates
-ServicesBootstrap ..> FirebaseAuthService : creates
-
+' Game Manager Dependencies
+GameManager ..> IAuthService : uses
 GameManager ..> IUserDataService : uses
 GameManager ..> IInventoryService : uses
-GameManager ..> IAgentConfigurationService : uses
+GameManager ..> ILevelManagementService : uses
+
+' Level Manager Dependencies
 LevelManager ..> IInventoryService : uses
+LevelManager ..> ITowerDataService : uses
+LevelManager ..> ILevelManagementService : uses
 
-note right of ServiceLocator
-  Service Locator Pattern
-  Central registry for all services
-  Supports dependency injection
+' ============================================
+' NOTES
+' ============================================
+
+note top of ServiceLocator
+  **Service Locator Pattern**
+  - Central registry for all services
+  - Singleton implementation
+  - Supports service lifecycle management
 end note
 
-note right of ServicesBootstrap
-  Initializes all microservices
-  Registers with ServiceLocator
-  Called at game startup
+note top of FirestoreServiceBase
+  **Abstract Base Class**
+  - Shared Firestore initialization
+  - Common error handling
+  - Template method pattern
 end note
 
-note bottom of FirestoreServiceBase
-  Base class for Firestore services
-  Handles Firebase initialization
-  Shared logic for all Firestore services
+note bottom of GameManager
+  **Main Game Controller**
+  - Orchestrates game flow
+  - Manages player session
+  - Coordinates all services
+end note
+
+note bottom of InventoryService
+  **Max 3 Tower Selection Rule**
+  Enforces game rule limiting
+  player to select maximum of
+  3 towers per level
 end note
 
 @enduml
-

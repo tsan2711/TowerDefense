@@ -1,0 +1,95 @@
+@startuml Complete Level Flow
+
+!theme plain
+skinparam activity {
+  BackgroundColor #E8F4F8
+  BorderColor #2E7D9A
+  FontSize 12
+}
+skinparam activityStartEnd {
+  BackgroundColor #FFE6CC
+  BorderColor #D79B00
+  FontSize 12
+}
+skinparam activityDecision {
+  BackgroundColor #FFF2CC
+  BorderColor #D6B656
+  FontSize 11
+}
+skinparam partition {
+  BackgroundColor #F5F5F5
+  BorderColor #999999
+  FontSize 12
+}
+
+start
+
+if (Level state?) then (Win)
+  :Calculate stars earned;
+  :Get levelId;
+  :Get maxLevel;
+else (Lose)
+  :Stars = 0;
+  :Get levelId;
+endif
+
+partition "Save Progress" {
+  :Save Level Progress\nto Firestore;
+  :Update levelStars dictionary;
+  :Update maxLevel if higher;
+  :Save to local storage;
+}
+
+partition "Unlock Tower" {
+  :Get level index;
+  
+  if (Level index == 0?) then (yes)
+    :Unlock Rocket tower;
+  else (no)
+    if (Level index == 1?) then (yes)
+      :Unlock Emp tower;
+    else (no)
+      if (Level index == 2?) then (yes)
+        :Unlock Laser tower;
+      else (no)
+        :No tower to unlock;
+      endif
+    endif
+  endif
+  
+  if (Tower to unlock?) then (yes)
+    :Get tower prefab by MainTower;
+    :Check if user already owns;
+    
+    if (Already owns?) then (no)
+      :Unlock Tower in Inventory;
+      :Save to Firestore;
+      :Update cached inventory;
+    else (yes)
+      :Skip unlock;
+    endif
+  endif
+}
+
+partition "Sync Data" {
+  :Sync Level Progress\nto Firestore;
+  :Update UserInfo.LevelProgress;
+  :Filter Inventory by new maxLevel;
+  :Reload Inventory if needed;
+}
+
+:Show Level Complete UI;
+:Update Level Progress display;
+
+if (Player wants to continue?) then (yes)
+  :Return to Level Select;
+else (no)
+  :Return to Main Menu;
+endif
+
+stop
+
+@enduml
+
+
+

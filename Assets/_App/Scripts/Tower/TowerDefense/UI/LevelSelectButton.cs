@@ -6,6 +6,9 @@ using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using TMPro;
 using DG.Tweening;
+using Services.Auth;
+using Services.Core;
+using Services.Managers;
 
 namespace TowerDefense.UI
 {
@@ -239,18 +242,57 @@ namespace TowerDefense.UI
 		}
 
 		/// <summary>
+		/// Public method to refresh stars display
+		/// Can be called when level progress is loaded from database
+		/// </summary>
+		public void RefreshStars()
+		{
+			HasPlayedState();
+		}
+
+		/// <summary>
 		/// Configures the feedback concerning if the player has played
-		/// Loads stars from user's level progress
+		/// Loads stars from user's level progress trên database
 		/// </summary>
 		protected void HasPlayedState()
 		{
-			GameManager gameManager = GameManager.instance;
-			if (gameManager == null || stars == null || starAchieved == null)
+			if (stars == null || starAchieved == null || m_Item == null)
 			{
 				return;
 			}
 			
-			int starsForLevel = gameManager.GetStarsForLevel(m_Item.id);
+			int starsForLevel = 0;
+			bool foundInDatabase = false;
+			
+			// Ưu tiên lấy từ user.LevelProgress.LevelStars trên database
+			var serviceLocator = ServiceLocator.Instance;
+			if (serviceLocator != null)
+			{
+				var authService = serviceLocator.GetService<IAuthService>();
+				if (authService != null && authService.IsAuthenticated && authService.CurrentUser != null)
+				{
+					var levelProgress = authService.CurrentUser.LevelProgress;
+					if (levelProgress != null && levelProgress.LevelStars != null)
+					{
+						// Lấy stars từ LevelProgress.LevelStars dictionary
+						if (levelProgress.LevelStars.ContainsKey(m_Item.id))
+						{
+							starsForLevel = levelProgress.LevelStars[m_Item.id];
+							foundInDatabase = true;
+						}
+					}
+				}
+			}
+			
+			// Fallback: nếu không tìm thấy trong database, lấy từ GameManager (local data)
+			if (!foundInDatabase)
+			{
+				GameManager gameManager = GameManager.instance;
+				if (gameManager != null)
+				{
+					starsForLevel = gameManager.GetStarsForLevel(m_Item.id);
+				}
+			}
 			
 			// Set sprite for achieved stars
 			for (int i = 0; i < stars.Length; i++)

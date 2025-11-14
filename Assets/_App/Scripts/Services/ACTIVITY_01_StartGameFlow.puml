@@ -1,0 +1,82 @@
+@startuml Start Game Flow
+
+!theme plain
+skinparam activity {
+  BackgroundColor #E8F4F8
+  BorderColor #2E7D9A
+  FontSize 12
+}
+skinparam activityStartEnd {
+  BackgroundColor #FFE6CC
+  BorderColor #D79B00
+  FontSize 12
+}
+skinparam activityDecision {
+  BackgroundColor #FFF2CC
+  BorderColor #D6B656
+  FontSize 11
+}
+skinparam partition {
+  BackgroundColor #F5F5F5
+  BorderColor #999999
+  FontSize 12
+}
+
+start
+
+:Initialize ServicesBootstrap;
+:Register all microservices;
+:Initialize ServiceLocator;
+
+partition "Authentication" {
+  if (User authenticated?) then (yes)
+    :Get Auth Token;
+    :Load User Data from Firestore;
+  else (no)
+    :Show Login Screen;
+    :Wait for user authentication;
+    stop
+  endif
+}
+
+partition "Load Game Data" {
+  fork
+    :Load Level List;
+  fork again
+    :Load Agent Configurations;
+  fork again
+    :Load Tower Data;
+  fork again
+    :Load Inventory Config;
+  end fork
+  
+  :Wait for all data loaded;
+}
+
+partition "Load User Data" {
+  fork
+    :Load User Inventory;
+  fork again
+    :Load Level Progress;
+  fork again
+    :Load Agent Configurations;
+  end fork
+  
+  :Wait for all user data loaded;
+}
+
+partition "Filter & Sync" {
+  :Filter Inventory by maxLevel;
+  :Sync Level Progress;
+  :Update maxLevel if needed;
+}
+
+:Show Main Menu;
+:Game Ready;
+
+stop
+
+@enduml
+
+
+

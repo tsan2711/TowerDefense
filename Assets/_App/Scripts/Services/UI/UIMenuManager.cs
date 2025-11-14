@@ -476,13 +476,22 @@ namespace Services.UI
             if (user != null)
             {
                 // Update player level
-                // Có thể tính từ LevelProgress.MaxLevel hoặc từ một field riêng
+                // Sử dụng MaxLevel từ user collection trên database
                 currentLevel = defaultPlayerLevel;
                 if (user.LevelProgress != null)
                 {
-                    // Level có thể được tính từ số level đã hoàn thành
-                    int completedLevels = user.LevelProgress.LevelStars?.Count ?? 0;
-                    currentLevel = Mathf.Max(defaultPlayerLevel, completedLevels + 1);
+                    // Sử dụng MaxLevel từ database thay vì tính từ số level đã hoàn thành
+                    int maxLevelFromDB = user.LevelProgress.MaxLevel;
+                    if (maxLevelFromDB > 0)
+                    {
+                        currentLevel = Mathf.Max(defaultPlayerLevel, maxLevelFromDB);
+                    }
+                    else
+                    {
+                        // Fallback: nếu MaxLevel chưa có, tính từ số level đã hoàn thành
+                        int completedLevels = user.LevelProgress.LevelStars?.Count ?? 0;
+                        currentLevel = Mathf.Max(defaultPlayerLevel, completedLevels + 1);
+                    }
                 }
 
                 // Update player name

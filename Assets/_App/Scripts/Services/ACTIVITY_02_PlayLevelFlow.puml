@@ -1,0 +1,125 @@
+@startuml Play Level Flow
+
+!theme plain
+skinparam activity {
+  BackgroundColor #E8F4F8
+  BorderColor #2E7D9A
+  FontSize 12
+}
+skinparam activityStartEnd {
+  BackgroundColor #FFE6CC
+  BorderColor #D79B00
+  FontSize 12
+}
+skinparam activityDecision {
+  BackgroundColor #FFF2CC
+  BorderColor #D6B656
+  FontSize 11
+}
+skinparam partition {
+  BackgroundColor #F5F5F5
+  BorderColor #999999
+  FontSize 12
+}
+
+start
+
+:Player selects level;
+
+partition "Load Level Data" {
+  :Get levelId from selection;
+  :Load Level Library Config;
+  :Load User Inventory;
+  
+  if (Inventory loaded?) then (yes)
+    :Get Selected Towers (max 3);
+  else (no)
+    :Load Inventory from Firestore;
+    :Get Selected Towers;
+  endif
+}
+
+partition "Filter Tower Library" {
+  :Get unlocked tower types\n(based on maxLevel);
+  :Get selected tower names\nfrom inventory;
+  :Load tower prefabs\nfrom Resources;
+  
+  fork
+    :Match by towerName;
+  fork again
+    :Match by MainTower type;
+  end fork
+  
+  :Filter library to only\nselected + unlocked towers;
+  :Build TowerLibrary;
+}
+
+partition "Initialize Level" {
+  :Load Level Scene;
+  :Initialize LevelManager;
+  :Set starting currency;
+  :Initialize home bases;
+  :Set levelState = Intro;
+}
+
+if (Has Intro?) then (yes)
+  :Show Level Intro;
+  :Wait for intro completion;
+else (no)
+endif
+
+:Change levelState = Building;
+
+partition "Building Phase" {
+  :Player can build towers;
+  :Filter tower library displayed;
+  
+  repeat
+    :Player places tower;
+    :Check currency;
+    :Deduct cost;
+    :Spawn tower;
+  repeat while (Player clicks "Start Wave"?)
+  
+  :Building Completed;
+}
+
+:Change levelState = SpawningEnemies;
+
+partition "Combat Phase" {
+  fork
+    :Start Wave Manager;
+    :Spawn enemies in waves;
+  fork again
+    :Towers attack enemies;
+    :Enemies move to base;
+  fork again
+    :Update currency gain;
+    :Update enemy count;
+  end fork
+  
+  repeat
+    :Check game state;
+  repeat while (Game not over?)
+}
+
+:All enemies spawned;
+:Change levelState = AllEnemiesSpawned;
+
+if (All enemies killed?) then (yes)
+  :Change levelState = Win;
+else (no)
+  if (All bases destroyed?) then (yes)
+    :Change levelState = Lose;
+  else (no)
+    :Wait for all enemies killed;
+    :Change levelState = Win;
+  endif
+endif
+
+stop
+
+@enduml
+
+
+

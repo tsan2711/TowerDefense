@@ -1,0 +1,101 @@
+@startuml Tower Defense - Complete Level Flow
+
+!theme plain
+
+skinparam activity {
+  BackgroundColor #E8F4F8
+  BorderColor #2E7D9A
+  FontSize 11
+}
+skinparam activityStartEnd {
+  BackgroundColor #FFE6CC
+  BorderColor #D79B00
+  FontSize 11
+}
+skinparam activityDecision {
+  BackgroundColor #FFF2CC
+  BorderColor #D6B656
+  FontSize 10
+}
+skinparam partition {
+  BackgroundColor #F5F5F5
+  BorderColor #999999
+  FontSize 12
+  FontStyle bold
+}
+skinparam note {
+  BackgroundColor #FFF9E6
+  BorderColor #D6B656
+  FontSize 10
+}
+
+title 🏆 Complete Level Flow
+
+start
+
+:Get level result (Win/Lose);
+
+if (Result?) then (Win)
+  :Calculate stars (1-3);
+  :Get level rewards;
+else (Lose)
+  :Stars = 0;
+  :No rewards;
+endif
+
+partition "Save Progress" {
+  :Save level stars to Firestore;
+  :Update maxLevel if higher;
+  :Update local cache;
+  
+  note right
+    Progress saved to:
+    users/{uid}/levelProgress
+  end note
+}
+
+partition "Unlock Rewards" {
+  if (Level completed first time?) then (yes)
+    :Check unlock requirements;
+    
+    switch (Level index?)
+    case (0)
+      :Unlock Rocket Tower;
+    case (1)
+      :Unlock Emp Tower;
+    case (2)
+      :Unlock Laser Tower;
+    case (else)
+      :No tower unlock;
+    endswitch
+    
+    if (Tower unlocked?) then (yes)
+      :Add to inventory;
+      :Save to Firestore;
+      :Show unlock notification;
+    endif
+  else (no)
+    :Skip unlock;
+  endif
+}
+
+partition "Sync & Update" {
+  :Sync progress to cloud;
+  :Filter inventory by new maxLevel;
+  :Reload available towers;
+  :Fire completion events;
+}
+
+:Show Level Complete Screen;
+:Display stars & rewards;
+
+if (Next action?) then (Retry)
+  :Restart level;
+else (Continue)
+  :Return to Level Select;
+endif
+
+stop
+
+@enduml
+

@@ -50,6 +50,11 @@ namespace TowerDefense.UI
 		protected LevelList m_LevelList;
 		
 		protected List<Button> m_Buttons = new List<Button>();
+		
+		/// <summary>
+		/// List of all LevelSelectButton instances for refreshing stars
+		/// </summary>
+		protected List<LevelSelectButton> m_LevelSelectButtons = new List<LevelSelectButton>();
 
 		/// <summary>
 		/// Instantiate the buttons
@@ -83,6 +88,7 @@ namespace TowerDefense.UI
 				button.transform.SetParent(layout.transform);
 				button.transform.localScale = Vector3.one;
 				m_Buttons.Add(button.GetComponent<Button>());
+				m_LevelSelectButtons.Add(button);
 			}
 			if (rightBuffer != null)
 			{
@@ -175,6 +181,28 @@ namespace TowerDefense.UI
 			navigation.selectOnLeft = left;
 			navigation.selectOnRight = right;
 			selectable.navigation = navigation;
+		}
+
+		/// <summary>
+		/// Refresh stars for all level buttons
+		/// Call this when level progress is loaded from database
+		/// </summary>
+		public void RefreshLevelStars()
+		{
+			if (m_LevelSelectButtons == null)
+			{
+				return;
+			}
+			
+			foreach (var button in m_LevelSelectButtons)
+			{
+				if (button != null)
+				{
+					button.RefreshStars();
+				}
+			}
+			
+			Debug.Log($"[LevelSelectScreen] Refreshed stars for {m_LevelSelectButtons.Count} level buttons");
 		}
 
 		/// <summary>

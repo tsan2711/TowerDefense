@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Linq;
 using TowerDefense.Towers;
+using TowerDefense.UI;
 
 namespace TowerDefense.Game
 {
@@ -250,6 +251,21 @@ namespace TowerDefense.Game
 		}
 
 		/// <summary>
+		/// Refresh level select UI to update stars display
+		/// Called after level progress is loaded from database
+		/// </summary>
+		protected void RefreshLevelSelectUI()
+		{
+			// Find LevelSelectScreen in scene and refresh stars
+			LevelSelectScreen levelSelectScreen = FindObjectOfType<LevelSelectScreen>();
+			if (levelSelectScreen != null)
+			{
+				levelSelectScreen.RefreshLevelStars();
+				Debug.Log("[GAME] Refreshed level select UI stars");
+			}
+		}
+
+		/// <summary>
 		/// Public method to trigger loading agent configurations from database
 		/// Can be called when user logs in after GameManager is already initialized
 		/// </summary>
@@ -317,12 +333,15 @@ namespace TowerDefense.Game
 							authService.CurrentUser.LevelProgress = userLevelProgress;
 						}
 						
-						// Update from merged data
-						userLevelProgress.LevelStars = levelStars;
-						userLevelProgress.MaxLevel = m_DataStore.maxLevel;
-					}
-					
-					Debug.Log($"[GAME] Successfully loaded level progress from DB: {levelStars.Count} levels, maxLevel {maxLevel}");
+					// Update from merged data
+					userLevelProgress.LevelStars = levelStars;
+					userLevelProgress.MaxLevel = m_DataStore.maxLevel;
+				}
+				
+				// Refresh level select UI if it exists
+				RefreshLevelSelectUI();
+				
+				Debug.Log($"[GAME] Successfully loaded level progress from DB: {levelStars.Count} levels, maxLevel {maxLevel}");
 				}
 				else
 				{

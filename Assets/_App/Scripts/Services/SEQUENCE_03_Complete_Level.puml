@@ -1,0 +1,203 @@
+@startuml Tower Defense - Complete Level Sequence
+
+!theme plain
+
+skinparam sequence {
+  ArrowColor #2E7D9A
+  ActorBorderColor #2E7D9A
+  LifeLineBorderColor #2E7D9A
+  LifeLineBackgroundColor #E8F4F8
+  
+  ParticipantBorderColor #2E7D9A
+  ParticipantBackgroundColor #E8F4F8
+  ParticipantFontSize 12
+  
+  ActorBackgroundColor #FFE6CC
+  ActorFontSize 12
+}
+
+skinparam note {
+  BackgroundColor #FFF9E6
+  BorderColor #D6B656
+  FontSize 10
+}
+
+title 🏆 Complete Level Sequence
+
+actor Player
+participant "Level\nManager" as LevelMgr
+participant "LevelManagement\nService" as LevelSvc
+participant "Inventory\nService" as Inventory
+participant "UserData\nService" as UserData
+participant "Completion\nUI" as UI
+database "Firestore" as DB
+
+== Level Result ==
+LevelMgr -> LevelMgr: GetLevelResult()
+activate LevelMgr
+
+alt Victory
+  LevelMgr -> LevelMgr: CalculateStars(basesRemaining)
+  note right: 3 stars: All bases intact\n2 stars: 2+ bases\n1 star: 1+ base
+  LevelMgr -> LevelMgr: CalculateRewards()
+  
+else Defeat
+  LevelMgr -> LevelMgr: stars = 0
+  LevelMgr -> LevelMgr: rewards = null
+end
+
+== Save Progress ==
+LevelMgr -> LevelSvc: SaveLevelProgress(levelId, stars)
+activate LevelSvc
+
+LevelSvc -> LevelSvc: GetCurrentProgress(levelId)
+
+alt First Completion OR Better Score
+  LevelSvc -> DB: Update levelProgress/{uid}/{levelId}
+  activate DB
+  
+  note over DB
+    Save:
+    - levelId
+    - stars
+    - completedAt
+    - attempts
+  end note
+  
+  DB --> LevelSvc: Progress saved
+  deactivate DB
+  
+  LevelSvc -> LevelSvc: UpdateLocalCache()
+  
+  LevelSvc -> LevelSvc: GetCurrentMaxLevel()
+  
+  alt New Level Unlocked (levelId + 1 > maxLevel)
+    LevelSvc -> LevelSvc: UpdateMaxLevel(levelId + 1)
+    LevelSvc -> DB: Update users/{uid}/maxLevel
+    activate DB
+    DB --> LevelSvc: MaxLevel updated
+    deactivate DB
+    
+    note right of LevelSvc
+      New levels unlocked!
+      New towers may be available
+    end note
+  end
+  
+  LevelSvc --> LevelMgr: Progress saved, maxLevel updated
+  
+else Same or Worse Score
+  LevelSvc --> LevelMgr: No update needed
+end
+
+deactivate LevelSvc
+
+== Unlock Rewards ==
+alt First Time Completion AND Victory
+  LevelMgr -> Inventory: CheckUnlockRequirements(levelId)
+  activate Inventory
+  
+  Inventory -> Inventory: DetermineUnlockedTower(levelId)
+  
+  note right of Inventory
+    Unlock Rules:
+    - Level 0 (1st) → Rocket Tower
+    - Level 1 (2nd) → Emp Tower
+    - Level 2 (3rd) → Laser Tower
+    - Level 3+ → No tower unlock
+  end note
+  
+  alt Tower Unlocked
+    Inventory -> Inventory: GetTowerConfig(towerType)
+    
+    alt Not Already Owned
+      Inventory -> Inventory: AddToInventory(tower)
+      Inventory -> DB: Save inventory/{uid}
+      activate DB
+      
+      note over DB
+        Add tower:
+        - towerName
+        - towerType
+        - isSelected: false
+        - unlockedAt: timestamp
+      end note
+      
+      DB --> Inventory: Tower saved
+      deactivate DB
+      
+      Inventory -> Inventory: FireOnTowerUnlocked(tower)
+      Inventory --> LevelMgr: Tower unlocked: {towerName}
+      
+      LevelMgr -> UI: ShowUnlockNotification(tower)
+      activate UI
+      UI --> Player: "🎉 New Tower Unlocked!"
+      deactivate UI
+      
+    else Already Owned
+      Inventory --> LevelMgr: Tower already owned
+    end
+    
+  else No Tower Unlock
+    Inventory --> LevelMgr: No tower to unlock
+  end
+  
+  deactivate Inventory
+  
+else Replay OR Defeat
+  LevelMgr -> LevelMgr: Skip unlock rewards
+end
+
+== Sync & Update ==
+LevelMgr -> LevelSvc: GetMaxLevel()
+activate LevelSvc
+LevelSvc --> LevelMgr: currentMaxLevel
+deactivate LevelSvc
+
+LevelMgr -> Inventory: FilterInventoryByMaxLevel(maxLevel)
+activate Inventory
+
+Inventory -> Inventory: Apply unlock rules
+note right: Update available towers\nbased on new maxLevel
+
+Inventory --> LevelMgr: Filtered inventory
+deactivate Inventory
+
+LevelMgr -> UserData: SyncProgressToCloud()
+activate UserData
+UserData -> DB: Sync user data
+DB --> UserData: Sync complete
+deactivate UserData
+
+LevelMgr -> LevelMgr: FireCompletionEvents()
+
+== Show Results ==
+LevelMgr -> UI: ShowLevelCompleteScreen(result, stars, rewards)
+activate UI
+
+UI --> Player: Display results
+note over Player
+  Results shown:
+  - Win/Lose
+  - Stars earned (0-3)
+  - Rewards (if any)
+  - Unlocked towers
+  - Next action buttons
+end note
+
+Player -> UI: Choose action
+
+alt Retry Level
+  UI -> LevelMgr: RestartLevel(levelId)
+  LevelMgr -> LevelMgr: ReloadLevel()
+  deactivate UI
+  deactivate LevelMgr
+  
+else Continue
+  UI -> UI: ReturnToLevelSelect()
+  deactivate UI
+  deactivate LevelMgr
+end
+
+@enduml
+

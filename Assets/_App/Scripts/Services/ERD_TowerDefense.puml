@@ -1,0 +1,165 @@
+@startuml Tower Defense - Entity Relationship Diagram
+
+!theme plain
+
+skinparam linetype ortho
+skinparam packageStyle rectangle
+skinparam shadowing false
+
+skinparam entity {
+  BackgroundColor #E8F4F8
+  BorderColor #2E7D9A
+  FontSize 12
+}
+
+skinparam arrow {
+  Color #2E7D9A
+  Thickness 2
+}
+
+title 🗄️ Tower Defense - Entity Relationship Diagram\n(Firestore Database Schema)
+
+package "User Domain" {
+  entity "users/{uid}" as users {
+    * **uid** : string <<PK>>
+    --
+    email : string
+    displayName : string
+    maxLevel : int
+    createdAt : timestamp
+    lastLogin : timestamp
+  }
+  
+  entity "levelProgress/{uid}/{levelId}" as levelProgress {
+    * **uid** : string <<FK>>
+    * **levelId** : string <<PK>>
+    --
+    stars : int
+    completedAt : timestamp
+    attempts : int
+  }
+  
+  entity "inventory/{uid}" as inventory {
+    * **uid** : string <<PK, FK>>
+    --
+    selectedTowers : array<string>
+    maxSelectedTowers : int
+    lastUpdated : timestamp
+    ownedTowers : array<object>
+  }
+  
+  entity "ownedTower (nested)" as ownedTower {
+    * **towerName** : string
+    --
+    towerType : int
+    isSelected : boolean
+    unlockedAt : timestamp
+    usageCount : int
+  }
+}
+
+package "Game Configuration" {
+  entity "LevelList" as levelList {
+    * **documentId** : string <<PK>>
+    --
+    levels : array
+  }
+  
+  entity "LevelLibraryConfig" as levelLibraryConfig {
+    * **levelId** : string <<PK>>
+    --
+    towerConfigs : array
+    levelData : object
+  }
+  
+  entity "AgentConfigurations" as agentConfig {
+    * **type** : string <<PK>>
+    --
+    agentName : string
+    agentDescription : string
+  }
+  
+  entity "TowerLevelData" as towerLevelData {
+    * **type** : string <<PK>>
+    --
+    towerData : object
+  }
+}
+
+package "Inventory Configuration" {
+  entity "inventoryConfig" as inventoryConfig {
+    * **towerName** : string <<PK>>
+    --
+    towerType : int
+    displayName : string
+    description : string
+    unlockCost : int
+    requiredLevel : int
+    requiredLevels : array
+    isDefaultUnlocked : boolean
+    isPurchasable : boolean
+    rarity : int
+    iconName : string
+    sortOrder : int
+    isActive : boolean
+    tags : array
+  }
+}
+
+' Relationships
+users ||--o{ levelProgress : "has progress\n(subcollection)"
+users ||--|| inventory : "has inventory\n(1:1)"
+inventory }o--o{ ownedTower : "contains\n(nested array)"
+inventoryConfig ||--o{ ownedTower : "defines config"
+
+note right of users
+  Main user document
+  Stores user profile
+  and progression data
+end note
+
+note right of levelProgress
+  Subcollection under users
+  Path: levelProgress/{uid}/{levelId}
+  Tracks completion
+  for each level
+  One document per level
+end note
+
+note right of inventory
+  User's tower inventory
+  Document path: inventory/{uid}
+  Contains:
+  - selectedTowers array
+  - ownedTowers array
+  - maxSelectedTowers
+end note
+
+note right of ownedTower
+  Nested objects in
+  inventory.ownedTowers array
+  Each tower owned by user
+  with selection status
+  Referenced by towerName
+end note
+
+note right of inventoryConfig
+  Global tower configurations
+  Defines unlock rules
+  and tower properties
+end note
+
+note right of levelList
+  Single document: "main"
+  Contains all level
+  configurations
+end note
+
+note right of levelLibraryConfig
+  Tower library config
+  for each level
+  Defines available towers
+end note
+
+@enduml
+

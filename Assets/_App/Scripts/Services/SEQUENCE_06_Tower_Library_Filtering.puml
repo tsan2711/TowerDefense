@@ -1,0 +1,233 @@
+@startuml Tower Defense - Tower Library Filtering Sequence
+
+!theme plain
+
+skinparam sequence {
+  ArrowColor #2E7D9A
+  ActorBorderColor #2E7D9A
+  LifeLineBorderColor #2E7D9A
+  LifeLineBackgroundColor #E8F4F8
+  
+  ParticipantBorderColor #2E7D9A
+  ParticipantBackgroundColor #E8F4F8
+  ParticipantFontSize 12
+  
+  ActorBackgroundColor #FFE6CC
+  ActorFontSize 12
+}
+
+skinparam note {
+  BackgroundColor #FFF9E6
+  BorderColor #D6B656
+  FontSize 10
+}
+
+title 🗼 Tower Library Filtering Sequence
+
+participant "Level\nManager" as LevelMgr
+participant "Tower\nLibrary" as Library
+participant "TowerData\nService" as TowerData
+participant "UserData\nService" as UserData
+participant "Inventory\nService" as Inventory
+participant "Resources" as Resources
+participant "Level\nScene" as Scene
+
+== Level Initialization ==
+LevelMgr -> LevelMgr: OnLevelStart(levelId)
+activate LevelMgr
+
+note right of LevelMgr
+  Level is starting
+  Need to build tower library
+  based on player's progression
+end note
+
+== Load Required Data ==
+LevelMgr -> TowerData: GetTowerLibraryForLevel(levelId)
+activate TowerData
+TowerData -> TowerData: LoadLevelConfig()
+TowerData --> LevelMgr: Level tower config
+deactivate TowerData
+
+LevelMgr -> UserData: GetMaxLevel()
+activate UserData
+UserData -> UserData: GetFromCache()
+UserData --> LevelMgr: maxLevel
+deactivate UserData
+
+LevelMgr -> Inventory: GetSelectedTowers()
+activate Inventory
+Inventory -> Inventory: GetFromCache()
+Inventory --> LevelMgr: selectedTowers[]
+
+note right
+  Max 3 towers selected
+  Example: 
+  ["MachineGun", "Rocket", "Emp"]
+end note
+deactivate Inventory
+
+== Determine Unlocked Types ==
+LevelMgr -> Library: BuildFilteredLibrary(maxLevel, selectedTowers)
+activate Library
+
+Library -> Library: CreateUnlockedTypesSet()
+
+Library -> Library: AddTowerType(MachineGun)
+note right: Always unlocked
+
+alt maxLevel >= 2
+  Library -> Library: AddTowerType(Rocket)
+end
+
+alt maxLevel >= 3
+  Library -> Library: AddTowerType(Emp)
+end
+
+alt maxLevel >= 4
+  Library -> Library: AddTowerType(Laser)
+end
+
+note over Library
+  Unlocked types determined
+  based on player progression:
+  
+  Level 1: MachineGun only
+  Level 2: + Rocket
+  Level 3: + Emp
+  Level 4: + Laser (all towers)
+end note
+
+== Load Tower Prefabs ==
+Library -> Resources: LoadAllTowerPrefabs()
+activate Resources
+
+Resources -> Resources: Load("Prefabs/Towers/*")
+
+Resources --> Library: All tower prefabs
+deactivate Resources
+
+note right of Library
+  All available tower prefabs
+  loaded from Resources folder
+end note
+
+== Filter & Match Towers ==
+Library -> Library: GetSelectedTowerNames(selectedTowers)
+
+loop For each tower prefab
+  Library -> Library: GetNextTowerPrefab()
+  
+  Library -> Library: GetTowerType(prefab)
+  
+  alt Tower Type is Unlocked
+    Library -> Library: IsTowerTypeUnlocked(type, unlockedTypes)
+    
+    alt Type Unlocked
+      Library -> Library: GetTowerName(prefab)
+      
+      alt Tower in Selection
+        Library -> Library: IsTowerSelected(name, selectedNames)
+        
+        alt Selected
+          Library -> Library: AddToFilteredLibrary(prefab)
+          
+          note right
+            Tower passes all filters:
+            ✓ Type unlocked
+            ✓ In player selection
+            → Added to library
+          end note
+          
+        else Not Selected
+          Library -> Library: SkipTower(prefab)
+          
+          note right
+            Tower type unlocked
+            but not in player's
+            selection → Skip
+          end note
+        end
+        
+      else Tower Not in Selection
+        Library -> Library: SkipTower(prefab)
+      end
+      
+    else Type Not Unlocked
+      Library -> Library: SkipLockedTower(prefab)
+      
+      note right
+        Tower type locked
+        for player's level
+        → Skip
+      end note
+    end
+    
+  else Tower Type Locked
+    Library -> Library: SkipTower(prefab)
+  end
+end
+
+== Validate & Finalize ==
+Library -> Library: ValidateFilteredLibrary()
+
+Library -> Library: CompareSelectedVsMatched()
+
+alt All Selected Towers Matched
+  Library -> Library: LogSuccess("All selected towers available")
+  
+  note right
+    Success case:
+    - All 3 selected towers found
+    - All are unlocked
+    - Ready for gameplay
+  end note
+  
+else Some Selected Not Matched
+  Library -> Library: LogWarning("Some towers missing")
+  
+  note right
+    Warning case:
+    - Selected tower not found in prefabs
+    - Or selected tower type locked
+    - Player can still play with available towers
+  end note
+end
+
+Library -> Library: BuildFinalTowerLibrary()
+
+Library -> Library: FireOnTowerLibraryUpdated(filteredLibrary)
+
+note over Library
+  Events fired:
+  - OnTowerLibraryBuilt
+  - OnAvailableTowersChanged
+end note
+
+Library --> LevelMgr: Filtered tower library
+deactivate Library
+
+== Initialize Level with Towers ==
+LevelMgr -> Scene: SetAvailableTowers(filteredLibrary)
+activate Scene
+
+Scene -> Scene: BuildTowerSelectionUI(towers)
+Scene -> Scene: InitializeTowerSpawning(towers)
+
+Scene --> LevelMgr: Level ready with towers
+deactivate Scene
+
+LevelMgr -> LevelMgr: SetLevelState(Building)
+
+note over LevelMgr
+  Level is now ready:
+  - Filtered tower library loaded
+  - Player can place selected towers
+  - All towers respect unlock rules
+  - UI shows available towers
+end note
+
+deactivate LevelMgr
+
+@enduml
+

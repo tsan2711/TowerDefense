@@ -1,0 +1,90 @@
+@startuml Tower Defense - Inventory Management Flow
+
+!theme plain
+
+skinparam activity {
+  BackgroundColor #E8F4F8
+  BorderColor #2E7D9A
+  FontSize 11
+}
+skinparam activityStartEnd {
+  BackgroundColor #FFE6CC
+  BorderColor #D79B00
+  FontSize 11
+}
+skinparam activityDecision {
+  BackgroundColor #FFF2CC
+  BorderColor #D6B656
+  FontSize 10
+}
+skinparam partition {
+  BackgroundColor #F5F5F5
+  BorderColor #999999
+  FontSize 12
+  FontStyle bold
+}
+skinparam note {
+  BackgroundColor #FFF9E6
+  BorderColor #D6B656
+  FontSize 10
+}
+
+title 🎒 Inventory Management Flow
+
+start
+
+:Player opens Inventory UI;
+
+partition "Load Inventory" {
+  if (Inventory cached?) then (yes)
+    :Use cached data;
+  else (no)
+    :Load from Firestore;
+    :Cache inventory;
+  endif
+}
+
+:Display owned towers;
+
+partition "Select Towers" {
+  :Player selects/deselects towers;
+  
+  if (Selection count <= 3?) then (valid)
+    :Update selection;
+    :Save to Firestore;
+    :Fire OnSelectedTowersChanged event;
+    
+    note right
+      Max 3 towers
+      can be selected
+    end note
+  else (invalid)
+    :Show error: Max 3 towers;
+  endif
+}
+
+partition "Unlock Tower (Optional)" {
+  if (Player clicks unlock?) then (yes)
+    :Get tower config;
+    :Check unlock requirements;
+    
+    if (Requirements met?) then (yes)
+      if (Already owned?) then (no)
+        :Add to inventory;
+        :Save to Firestore;
+        :Show unlock success;
+      else (yes)
+        :Already owned message;
+      endif
+    else (no)
+      :Show requirements;
+    endif
+  endif
+}
+
+:Update Inventory UI;
+
+stop
+
+@enduml
+

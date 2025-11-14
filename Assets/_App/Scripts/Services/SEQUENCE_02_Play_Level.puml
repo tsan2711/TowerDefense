@@ -1,0 +1,176 @@
+@startuml Tower Defense - Play Level Sequence
+
+!theme plain
+
+skinparam sequence {
+  ArrowColor #2E7D9A
+  ActorBorderColor #2E7D9A
+  LifeLineBorderColor #2E7D9A
+  LifeLineBackgroundColor #E8F4F8
+  
+  ParticipantBorderColor #2E7D9A
+  ParticipantBackgroundColor #E8F4F8
+  ParticipantFontSize 12
+  
+  ActorBackgroundColor #FFE6CC
+  ActorFontSize 12
+}
+
+skinparam note {
+  BackgroundColor #FFF9E6
+  BorderColor #D6B656
+  FontSize 10
+}
+
+title 🎯 Play Level Sequence
+
+actor Player
+participant "Level\nSelect UI" as UI
+participant "Level\nManager" as LevelMgr
+participant "LevelManagement\nService" as LevelSvc
+participant "Inventory\nService" as Inventory
+participant "TowerData\nService" as TowerData
+participant "Tower\nLibrary" as Library
+participant "Wave\nSpawner" as Spawner
+participant "Tower" as Tower
+participant "Enemy" as Enemy
+participant "Base" as Base
+
+Player -> UI: Select Level
+activate UI
+
+UI -> LevelSvc: GetLevelById(levelId)
+activate LevelSvc
+
+== Level Preparation ==
+LevelSvc -> LevelSvc: CheckLevelUnlockStatus()
+
+alt Level Unlocked
+  LevelSvc --> UI: Level config
+  
+else Level Locked
+  LevelSvc --> UI: Level locked
+  UI -> Player: Show locked message
+  deactivate UI
+  deactivate LevelSvc
+end
+
+== Load Inventory ==
+UI -> Inventory: GetSelectedTowers()
+activate Inventory
+Inventory --> UI: selectedTowers (max 3)
+deactivate Inventory
+
+UI -> Inventory: GetUnlockedTowerTypes(maxLevel)
+activate Inventory
+Inventory -> Inventory: Apply unlock rules\n(MachineGun, Rocket>=2,\nEmp>=3, Laser>=4)
+Inventory --> UI: unlockedTypes[]
+deactivate Inventory
+
+== Build Tower Library ==
+UI -> TowerData: LoadTowerPrefabs(levelId)
+activate TowerData
+TowerData -> TowerData: Load from Resources
+TowerData --> UI: allTowerPrefabs[]
+deactivate TowerData
+
+UI -> Library: BuildLibrary(selectedTowers, unlockedTypes, prefabs)
+activate Library
+Library -> Library: Filter & Match
+Library --> UI: Filtered tower library
+deactivate Library
+
+== Initialize Level ==
+UI -> LevelMgr: LoadLevel(levelId, towerLibrary)
+activate LevelMgr
+
+LevelMgr -> LevelMgr: LoadLevelScene()
+LevelMgr -> LevelMgr: SetStartingCurrency()
+LevelMgr -> LevelMgr: SetState(Building)
+
+LevelMgr --> Player: Level loaded, Building Phase
+deactivate UI
+
+== Building Phase ==
+loop Until Player Starts Wave
+  Player -> LevelMgr: PlaceTower(position, towerType)
+  
+  alt Enough Currency
+    LevelMgr -> LevelMgr: DeductCost(tower.cost)
+    LevelMgr -> Tower: SpawnTower(position, type)
+    activate Tower
+    Tower --> LevelMgr: Tower placed
+    LevelMgr --> Player: Tower placed successfully
+    
+  else Insufficient Funds
+    LevelMgr --> Player: Show insufficient funds
+  end
+end
+
+Player -> LevelMgr: StartWave()
+LevelMgr -> LevelMgr: SetState(Combat)
+
+== Combat Phase ==
+LevelMgr -> Spawner: SpawnWave()
+activate Spawner
+
+loop While Enemies Alive
+  Tower -> Tower: DetectEnemies()
+  Tower -> Enemy: Attack()
+  activate Enemy
+  
+  alt Enemy Destroyed
+    Enemy -> Spawner: OnEnemyKilled()
+    destroy Enemy
+  else Enemy Survives
+    Enemy -> Enemy: TakeDamage()
+  end
+end
+
+loop While Enemies Exist
+  Spawner -> Enemy: SpawnEnemy()
+  activate Enemy
+  Enemy -> Enemy: MoveTowardsBase()
+  
+  alt Reaches Base
+    Enemy -> Base: DamageBase()
+    activate Base
+    
+    alt Base Destroyed
+      Base -> LevelMgr: OnBaseDestroyed()
+      LevelMgr -> LevelMgr: SetState(Lose)
+      LevelMgr --> Player: Level Failed
+      deactivate Base
+      deactivate Enemy
+      deactivate Tower
+      deactivate Spawner
+      deactivate LevelMgr
+    else Base Survives
+      Base --> Enemy: Damage taken
+      deactivate Base
+    end
+    
+    destroy Enemy
+  end
+end
+
+== Victory Check ==
+Spawner -> LevelMgr: AllEnemiesDefeated()
+deactivate Spawner
+
+alt All Enemies Defeated
+  LevelMgr -> LevelMgr: SetState(Win)
+  LevelMgr -> LevelMgr: CalculateStars(basesRemaining)
+  LevelMgr --> Player: Victory! (stars: 1-3)
+  
+else Bases Destroyed
+  LevelMgr -> LevelMgr: SetState(Lose)
+  LevelMgr --> Player: Defeat! (stars: 0)
+end
+
+LevelMgr -> LevelMgr: CompleteLevel()
+deactivate LevelMgr
+deactivate Tower
+
+@enduml
+

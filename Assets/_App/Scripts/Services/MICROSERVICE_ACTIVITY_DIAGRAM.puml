@@ -1,271 +1,270 @@
-@startuml Microservice Architecture - Activity Diagram
+@startuml Tower Defense - Activity Diagrams
 
 !theme plain
+
 skinparam activity {
   BackgroundColor #E8F4F8
   BorderColor #2E7D9A
-  FontSize 12
+  FontSize 11
 }
 skinparam activityStartEnd {
   BackgroundColor #FFE6CC
   BorderColor #D79B00
+  FontSize 11
 }
 skinparam activityDecision {
   BackgroundColor #FFF2CC
   BorderColor #D6B656
+  FontSize 10
 }
 skinparam partition {
   BackgroundColor #F5F5F5
   BorderColor #999999
+  FontSize 12
+  FontStyle bold
+}
+skinparam note {
+  BackgroundColor #FFF9E6
+  BorderColor #D6B656
+  FontSize 10
 }
 
 ' ============================================
-' Activity 1: Start Game Flow
+' ACTIVITY 1: Game Startup Flow
 ' ============================================
-@startuml StartGameFlow
-title Start Game Flow
+title 🎮 Game Startup Flow
 
 start
 
-:Initialize ServicesBootstrap;
-:Register all microservices;
-:Initialize ServiceLocator;
+partition "Service Initialization" {
+  :Initialize ServicesBootstrap;
+  :Register all services to ServiceLocator;
+  note right
+    Services:
+    - AuthService
+    - UserDataService
+    - InventoryService
+    - LevelManagementService
+    - TowerDataService
+  end note
+}
 
-partition "Authentication" {
+partition "Authentication Check" {
   if (User authenticated?) then (yes)
-    :Get Auth Token;
-    :Load User Data from Firestore;
+    :Get current user;
+    :Retrieve auth token;
   else (no)
     :Show Login Screen;
-    :Wait for user authentication;
     stop
   endif
 }
 
-partition "Load Game Data" {
+partition "Load Game Configuration" {
   fork
     :Load Level List;
-  fork again
-    :Load Agent Configurations;
   fork again
     :Load Tower Data;
   fork again
     :Load Inventory Config;
+  fork again
+    :Load Agent Config;
   end fork
-  
-  :Wait for all data loaded;
 }
 
 partition "Load User Data" {
   fork
-    :Load User Inventory;
+    :Load User Profile;
   fork again
     :Load Level Progress;
   fork again
-    :Load Agent Configurations;
+    :Load User Inventory;
   end fork
-  
-  :Wait for all user data loaded;
 }
 
-partition "Filter & Sync" {
-  :Filter Inventory by maxLevel;
-  :Sync Level Progress;
-  :Update maxLevel if needed;
+partition "Sync & Filter" {
+  :Filter inventory by maxLevel;
+  :Sync progress to cloud;
 }
 
 :Show Main Menu;
-:Game Ready;
 
 stop
 
-@enduml
+' ============================================
+' ACTIVITY 2: Play Level Flow
+' ============================================
+newpage
 
-' ============================================
-' Activity 2: Play Level Flow
-' ============================================
-@startuml PlayLevelFlow
-title Play Level Flow
+title 🎯 Play Level Flow
 
 start
 
 :Player selects level;
 
-partition "Load Level Data" {
-  :Get levelId from selection;
-  :Load Level Library Config;
-  :Load User Inventory;
+partition "Level Preparation" {
+  :Get levelId;
+  :Check level unlock status;
   
-  if (Inventory loaded?) then (yes)
-    :Get Selected Towers (max 3);
+  if (Level unlocked?) then (yes)
+    :Load Level Config;
   else (no)
-    :Load Inventory from Firestore;
-    :Get Selected Towers;
+    :Show locked message;
+    stop
   endif
 }
 
-partition "Filter Tower Library" {
-  :Get unlocked tower types (based on maxLevel);
-  :Get selected tower names from inventory;
-  :Load tower prefabs from Resources;
+partition "Load Inventory" {
+  :Get selected towers (max 3);
+  :Get unlocked tower types by maxLevel;
   
-  fork
-    :Match by towerName;
-  fork again
-    :Match by MainTower type;
-  end fork
-  
-  :Filter library to only selected + unlocked towers;
-  :Build TowerLibrary;
+  note right
+    Unlock Rules:
+    - MachineGun: Always unlocked
+    - Rocket: maxLevel >= 2
+    - Emp: maxLevel >= 3
+    - Laser: maxLevel >= 4
+  end note
+}
+
+partition "Build Tower Library" {
+  :Load tower prefabs;
+  :Filter by selected & unlocked;
+  :Create Tower Library;
 }
 
 partition "Initialize Level" {
   :Load Level Scene;
   :Initialize LevelManager;
   :Set starting currency;
-  :Initialize home bases;
-  :Set levelState = Intro;
+  :Set level state = Building;
 }
-
-if (Has Intro?) then (yes)
-  :Show Level Intro;
-  :Wait for intro completion;
-else (no)
-endif
-
-:Change levelState = Building;
 
 partition "Building Phase" {
-  :Player can build towers;
-  :Filter tower library displayed;
-  
   repeat
     :Player places tower;
-    :Check currency;
-    :Deduct cost;
-    :Spawn tower;
-  repeat while (Player clicks "Start Wave"?)
-  
-  :Building Completed;
+    
+    if (Enough currency?) then (yes)
+      :Deduct cost;
+      :Spawn tower;
+    else (no)
+      :Show insufficient funds;
+    endif
+    
+  repeat while (Start wave?) is (no)
+  ->yes;
 }
 
-:Change levelState = SpawningEnemies;
+:Set level state = Combat;
 
 partition "Combat Phase" {
   fork
-    :Start Wave Manager;
-    :Spawn enemies in waves;
+    :Spawn enemy waves;
   fork again
-    :Towers attack enemies;
-    :Enemies move to base;
+    :Towers auto-attack;
   fork again
-    :Update currency gain;
-    :Update enemy count;
+    :Track enemy count;
   end fork
   
   repeat
-    :Check game state;
-  repeat while (Game not over?)
+    if (All bases destroyed?) then (yes)
+      :Level state = Lose;
+      stop
+    endif
+  repeat while (Enemies remaining?) is (yes)
+  ->no;
 }
 
-:All enemies spawned;
-:Change levelState = AllEnemiesSpawned;
-
-if (All enemies killed?) then (yes)
-  :Change levelState = Win;
+if (All enemies defeated?) then (yes)
+  :Level state = Win;
+  :Calculate stars (1-3);
 else (no)
-  if (All bases destroyed?) then (yes)
-    :Change levelState = Lose;
-  else (no)
-    :Wait for all enemies killed;
-    :Change levelState = Win;
-  endif
+  :Level state = Lose;
+  :Stars = 0;
 endif
+
+:Complete Level;
 
 stop
 
-@enduml
+' ============================================
+' ACTIVITY 3: Complete Level Flow
+' ============================================
+newpage
 
-' ============================================
-' Activity 3: Complete Level Flow
-' ============================================
-@startuml CompleteLevelFlow
-title Complete Level Flow
+title 🏆 Complete Level Flow
 
 start
 
-if (Level state?) then (Win)
-  :Calculate stars earned;
-  :Get levelId;
-  :Get maxLevel;
+:Get level result (Win/Lose);
+
+if (Result?) then (Win)
+  :Calculate stars (1-3);
+  :Get level rewards;
 else (Lose)
   :Stars = 0;
-  :Get levelId;
+  :No rewards;
 endif
 
 partition "Save Progress" {
-  :Save Level Progress to Firestore;
-  :Update levelStars dictionary;
+  :Save level stars to Firestore;
   :Update maxLevel if higher;
-  :Save to local storage;
+  :Update local cache;
+  
+  note right
+    Progress saved to:
+    users/{uid}/levelProgress
+  end note
 }
 
-partition "Unlock Tower" {
-  :Get level index;
-  
-  if (Level index == 0?) then (yes)
-    :Unlock Rocket tower;
-  else (no)
-    if (Level index == 1?) then (yes)
-      :Unlock Emp tower;
-    else (no)
-      if (Level index == 2?) then (yes)
-        :Unlock Laser tower;
-      else (no)
-        :No tower to unlock;
-      endif
-    endif
-  endif
-  
-  if (Tower to unlock?) then (yes)
-    :Get tower prefab by MainTower;
-    :Check if user already owns;
+partition "Unlock Rewards" {
+  if (Level completed first time?) then (yes)
+    :Check unlock requirements;
     
-    if (Already owns?) then (no)
-      :Unlock Tower in Inventory;
+    switch (Level index?)
+    case (0)
+      :Unlock Rocket Tower;
+    case (1)
+      :Unlock Emp Tower;
+    case (2)
+      :Unlock Laser Tower;
+    case (else)
+      :No tower unlock;
+    endswitch
+    
+    if (Tower unlocked?) then (yes)
+      :Add to inventory;
       :Save to Firestore;
-      :Update cached inventory;
-    else (yes)
-      :Skip unlock;
+      :Show unlock notification;
     endif
+  else (no)
+    :Skip unlock;
   endif
 }
 
-partition "Sync Data" {
-  :Sync Level Progress to Firestore;
-  :Update UserInfo.LevelProgress;
-  :Filter Inventory by new maxLevel;
-  :Reload Inventory if needed;
+partition "Sync & Update" {
+  :Sync progress to cloud;
+  :Filter inventory by new maxLevel;
+  :Reload available towers;
+  :Fire completion events;
 }
 
-:Show Level Complete UI;
-:Update Level Progress display;
+:Show Level Complete Screen;
+:Display stars & rewards;
 
-if (Player wants to continue?) then (yes)
+if (Next action?) then (Retry)
+  :Restart level;
+else (Continue)
   :Return to Level Select;
-else (no)
-  :Return to Main Menu;
 endif
 
 stop
 
-@enduml
+' ============================================
+' ACTIVITY 4: Inventory Management Flow
+' ============================================
+newpage
 
-' ============================================
-' Activity 4: Inventory Management Flow
-' ============================================
-@startuml InventoryManagementFlow
-title Inventory Management Flow
+title 🎒 Inventory Management Flow
 
 start
 
@@ -273,9 +272,9 @@ start
 
 partition "Load Inventory" {
   if (Inventory cached?) then (yes)
-    :Get cached inventory;
+    :Use cached data;
   else (no)
-    :Load Inventory from Firestore;
+    :Load from Firestore;
     :Cache inventory;
   endif
 }
@@ -283,179 +282,142 @@ partition "Load Inventory" {
 :Display owned towers;
 
 partition "Select Towers" {
-  :Player selects towers (max 3);
+  :Player selects/deselects towers;
   
-  if (Selection valid?) then (yes)
-    :Validate selection (max 3);
-    :Check tower ownership;
+  if (Selection count <= 3?) then (valid)
+    :Update selection;
+    :Save to Firestore;
+    :Fire OnSelectedTowersChanged event;
     
-    if (All owned?) then (yes)
-      :Update selected towers;
-      :Save to Firestore;
-      :Update cached inventory;
-      :Fire OnSelectedTowersChanged event;
-    else (no)
-      :Show error: Tower not owned;
-    endif
-  else (no)
-    :Show error: Too many towers selected;
+    note right
+      Max 3 towers
+      can be selected
+    end note
+  else (invalid)
+    :Show error: Max 3 towers;
   endif
 }
 
-partition "Unlock Tower" {
-  :Player clicks unlock button;
-  :Get tower name;
-  
-  :Load Inventory Config;
-  :Get Tower Config;
-  :Check unlock requirements;
-  
-  if (Requirements met?) then (yes)
-    :Check if already owned;
+partition "Unlock Tower (Optional)" {
+  if (Player clicks unlock?) then (yes)
+    :Get tower config;
+    :Check unlock requirements;
     
-    if (Already owned?) then (no)
-      :Unlock Tower;
-      :Add to inventory;
-      :Save to Firestore;
-      :Update cached inventory;
-      :Fire OnInventoryLoaded event;
-    else (yes)
-      :Show message: Already owned;
-    endif
-  else (no)
-    :Show unlock requirements;
-  endif
-}
-
-partition "Filter Inventory" {
-  :Get player maxLevel;
-  :Get unlocked tower types;
-  :Load all tower prefabs;
-  :Map towerName to MainTower;
-  
-  :Check each tower in inventory;
-  
-  repeat
-    :Check if tower type unlocked;
-    
-    if (Tower locked?) then (yes)
-      :Remove from inventory;
-      :Deselect if selected;
-      :Save to Firestore;
+    if (Requirements met?) then (yes)
+      if (Already owned?) then (no)
+        :Add to inventory;
+        :Save to Firestore;
+        :Show unlock success;
+      else (yes)
+        :Already owned message;
+      endif
     else (no)
-      :Keep tower;
+      :Show requirements;
     endif
-  repeat while (More towers to check?)
-  
-  :Reload inventory;
-  :Update selected towers;
+  endif
 }
 
 :Update Inventory UI;
-:Show updated inventory;
 
 stop
 
-@enduml
+' ============================================
+' ACTIVITY 5: Authentication Flow
+' ============================================
+newpage
 
-' ============================================
-' Activity 5: Authentication Flow
-' ============================================
-@startuml AuthenticationFlow
-title Authentication Flow
+title 🔐 Authentication Flow
 
 start
 
 :Player opens game;
 
-if (User authenticated?) then (yes)
+if (Already authenticated?) then (yes)
   :Get current user;
-  :Load cached user data;
   :Continue to main menu;
   stop
-else (no)
 endif
 
 :Show Login Screen;
 
-if (Login method?) then (Google)
-  :Sign In with Google;
-  
-  partition "Google Sign In" {
-    :Initialize Google Sign In;
-    :Request authentication;
+partition "Choose Auth Method" {
+  if (Login method?) then (Google)
+    :Click Google Sign In;
+    :Open Google Auth;
+    :Select Google account;
     :Get Google credentials;
-    :Authenticate with Firebase;
-  }
-  
-else (Email/Password)
-  if (Action?) then (Sign In)
-    :Enter email and password;
-    :Sign In with Email/Password;
     
-    partition "Email Sign In" {
+  else (Email)
+    if (Action?) then (Sign In)
+      :Enter email & password;
       :Validate credentials;
-      :Authenticate with Firebase;
-    }
-    
-  else (Sign Up)
-    :Enter email and password;
-    :Sign Up with Email/Password;
-    
-    partition "Email Sign Up" {
+      
+    else (Sign Up)
+      :Enter email & password;
       :Validate email format;
       :Validate password strength;
       :Create new account;
-      :Authenticate with Firebase;
-    }
+    endif
   endif
-endif
-
-partition "Post Authentication" {
-  :Get Auth Token;
-  :Get User Info;
-  :Save User Data to Firestore;
-  :Load User Data;
-  :Load User Inventory;
-  :Initialize Inventory if new user;
-  :Load Level Progress;
 }
 
-if (Authentication successful?) then (yes)
-  :Fire OnSignInSuccess event;
-  :Update UI with user info;
-  :Navigate to Main Menu;
-else (no)
-  :Fire OnSignInFailed event;
-  :Show error message;
-  :Return to Login Screen;
-endif
+partition "Firebase Authentication" {
+  :Authenticate with Firebase;
+  
+  if (Auth successful?) then (yes)
+    :Get Auth Token;
+    :Get User Info (uid, email);
+  else (no)
+    :Show error message;
+    :Return to Login Screen;
+    stop
+  endif
+}
+
+partition "Initialize User Data" {
+  if (New user?) then (yes)
+    :Create user document in Firestore;
+    :Initialize default inventory;
+    :Set maxLevel = 1;
+  else (no)
+    :Load existing user data;
+  endif
+  
+  :Load user inventory;
+  :Load level progress;
+  :Cache user data;
+}
+
+:Fire OnSignInSuccess event;
+:Navigate to Main Menu;
 
 stop
 
-@enduml
+' ============================================
+' ACTIVITY 6: Tower Library Filtering
+' ============================================
+newpage
 
-' ============================================
-' Activity 6: Filter Tower Library Flow
-' ============================================
-@startuml FilterTowerLibraryFlow
-title Filter Tower Library Flow
+title 🗼 Tower Library Filtering
 
 start
 
 :Level starts;
-:Get current levelId;
+:Get levelId;
 
-partition "Load Data" {
-  :Load TowerLibraryContainer;
-  :Get TowerLibrary for levelId;
-  :Get player maxLevel;
-  :Load User Inventory;
+partition "Load Required Data" {
+  fork
+    :Load TowerLibrary for level;
+  fork again
+    :Get player maxLevel;
+  fork again
+    :Get selected towers from inventory;
+  end fork
 }
 
-partition "Get Unlocked Types" {
-  :Initialize unlocked types set;
-  :Add MachineGun (always unlocked);
+partition "Determine Unlocked Types" {
+  :Create unlocked types set;
+  :Add MachineGun (always);
   
   if (maxLevel >= 2?) then (yes)
     :Add Rocket;
@@ -468,75 +430,47 @@ partition "Get Unlocked Types" {
   if (maxLevel >= 4?) then (yes)
     :Add Laser;
   endif
+  
+  note right
+    Progressive unlock system
+    based on player level
+  end note
 }
 
-partition "Get Selected Towers" {
-  :Get inventory data;
-  :Get selected towers (isSelected = true);
-  :Create selected tower names set;
-  :Create towerName to towerType mapping;
-}
-
-partition "Load Source Towers" {
-  :Load towers from existing library;
-  :Load tower prefabs from Resources/Towers;
-  :Create source towers dictionary;
-  :Merge and deduplicate;
-}
-
-partition "Match & Filter" {
-  :Initialize matched inventory towers set;
+partition "Filter & Match" {
+  :Load tower prefabs from Resources;
+  :Get selected tower names;
   
   repeat
     :Get next tower prefab;
     
-    :Check if MainTower unlocked;
-    
-    if (Unlocked?) then (yes)
-      :Try match by towerName;
-      
-      if (Name match found?) then (yes)
-        if (Already matched?) then (no)
-          :Mark as selected;
-          :Add to matched set;
-        else (yes)
-          :Skip duplicate;
-        endif
-      else (no)
-        :Try match by MainTower type;
-        
-        if (Type match found?) then (yes)
-          if (Already matched?) then (no)
-            :Mark as selected;
-            :Add to matched set;
-          else (yes)
-            :Skip duplicate;
-          endif
-        endif
-      endif
-      
-      if (Selected and unlocked?) then (yes)
+    if (Tower type unlocked?) then (yes)
+      if (Tower in selection?) then (yes)
         :Add to filtered library;
+      else (no)
+        :Skip;
       endif
     else (no)
       :Skip locked tower;
     endif
-  repeat while (More prefabs to check?)
+    
+  repeat while (More towers?) is (yes)
+  ->no;
 }
 
-:Check if all selected towers matched;
+partition "Validate & Finalize" {
+  if (All selected matched?) then (yes)
+    :Log success;
+  else (no)
+    :Log warning;
+  endif
+  
+  :Build final TowerLibrary;
+  :Fire towerLibraryUpdated event;
+}
 
-if (All matched?) then (yes)
-  :Log success;
-else (no)
-  :Log warning: Some towers not matched;
-endif
-
-:Rebuild TowerLibrary dictionary;
-:Fire towerLibraryUpdated event;
-:Level ready with filtered towers;
+:Level ready with towers;
 
 stop
 
 @enduml
-

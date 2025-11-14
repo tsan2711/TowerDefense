@@ -1,0 +1,274 @@
+@startuml Tower Defense - Authentication Sequence
+
+!theme plain
+
+skinparam sequence {
+  ArrowColor #2E7D9A
+  ActorBorderColor #2E7D9A
+  LifeLineBorderColor #2E7D9A
+  LifeLineBackgroundColor #E8F4F8
+  
+  ParticipantBorderColor #2E7D9A
+  ParticipantBackgroundColor #E8F4F8
+  ParticipantFontSize 12
+  
+  ActorBackgroundColor #FFE6CC
+  ActorFontSize 12
+}
+
+skinparam note {
+  BackgroundColor #FFF9E6
+  BorderColor #D6B656
+  FontSize 10
+}
+
+title 🔐 Authentication Sequence
+
+actor Player
+participant "Login\nUI" as UI
+participant "Auth\nService" as Auth
+participant "Firebase\nAuth" as FirebaseAuth
+participant "Google\nAuth" as GoogleAuth
+participant "UserData\nService" as UserData
+participant "Inventory\nService" as Inventory
+database "Firestore" as DB
+
+Player -> UI: Launch Game
+activate UI
+
+== Check Existing Session ==
+UI -> Auth: IsUserAuthenticated()
+activate Auth
+
+Auth -> FirebaseAuth: GetCurrentUser()
+activate FirebaseAuth
+
+alt Already Authenticated
+  FirebaseAuth --> Auth: Current user + token
+  Auth --> UI: true, UserInfo
+  UI --> Player: Navigate to Main Menu
+  deactivate UI
+  deactivate Auth
+  deactivate FirebaseAuth
+  
+else Not Authenticated
+  FirebaseAuth --> Auth: null
+  deactivate FirebaseAuth
+  Auth --> UI: false
+  UI --> Player: Show Login Screen
+end
+
+deactivate Auth
+
+== Choose Authentication Method ==
+Player -> UI: Choose login method
+
+alt Google Sign In
+  Player -> UI: Click "Sign in with Google"
+  
+  UI -> Auth: SignInWithGoogle()
+  activate Auth
+  
+  Auth -> GoogleAuth: InitiateGoogleAuth()
+  activate GoogleAuth
+  
+  GoogleAuth --> Player: Open Google Account Selector
+  Player -> GoogleAuth: Select Google Account
+  
+  GoogleAuth -> GoogleAuth: Authenticate
+  
+  alt Google Auth Success
+    GoogleAuth --> Auth: Google Credentials
+    deactivate GoogleAuth
+    
+    Auth -> FirebaseAuth: SignInWithCredential(googleCred)
+    activate FirebaseAuth
+    
+  else Google Auth Failed
+    GoogleAuth --> Auth: Error
+    deactivate GoogleAuth
+    Auth --> UI: Auth failed
+    UI --> Player: Show error message
+    deactivate Auth
+    deactivate UI
+  end
+
+else Email/Password Sign In
+  Player -> UI: Enter email & password
+  Player -> UI: Click "Sign In"
+  
+  UI -> Auth: SignInWithEmail(email, password)
+  activate Auth
+  
+  Auth -> Auth: ValidateCredentials()
+  Auth -> FirebaseAuth: SignInWithEmailAndPassword(email, password)
+  activate FirebaseAuth
+
+else Email/Password Sign Up
+  Player -> UI: Enter email & password
+  Player -> UI: Click "Sign Up"
+  
+  UI -> Auth: SignUpWithEmail(email, password)
+  activate Auth
+  
+  Auth -> Auth: ValidateEmailFormat()
+  Auth -> Auth: ValidatePasswordStrength()
+  
+  note right of Auth
+    Password requirements:
+    - Min 6 characters
+    - Contains letters & numbers
+  end note
+  
+  Auth -> FirebaseAuth: CreateUserWithEmailAndPassword(email, password)
+  activate FirebaseAuth
+end
+
+== Firebase Authentication ==
+alt Auth Successful
+  FirebaseAuth --> Auth: User, Auth Token
+  deactivate FirebaseAuth
+  
+  Auth -> Auth: StoreAuthToken()
+  Auth -> Auth: GetUserInfo(uid, email)
+  
+  note right of Auth
+    User Info:
+    - uid (unique ID)
+    - email
+    - displayName
+    - authToken
+  end note
+  
+else Auth Failed
+  FirebaseAuth --> Auth: Error (Invalid credentials)
+  deactivate FirebaseAuth
+  
+  Auth --> UI: Authentication failed
+  UI --> Player: Show error message
+  UI --> Player: Return to Login Screen
+  deactivate Auth
+  deactivate UI
+end
+
+== Initialize User Data ==
+Auth -> UserData: CheckUserExists(uid)
+activate UserData
+
+UserData -> DB: Query users/{uid}
+activate DB
+
+alt New User
+  DB --> UserData: User not found
+  deactivate DB
+  
+  UserData -> DB: Create users/{uid}
+  activate DB
+  
+  note over DB
+    Create user document:
+    {
+      uid: "...",
+      email: "...",
+      displayName: "...",
+      maxLevel: 1,
+      createdAt: timestamp,
+      lastLogin: timestamp
+    }
+  end note
+  
+  DB --> UserData: User created
+  deactivate DB
+  
+  UserData -> Inventory: InitializeDefaultInventory(uid)
+  activate Inventory
+  
+  Inventory -> DB: Create inventory/{uid}
+  activate DB
+  
+  note over DB
+    Default inventory:
+    {
+      ownedTowers: ["MachineGun"],
+      selectedTowers: ["MachineGun"],
+      createdAt: timestamp
+    }
+  end note
+  
+  DB --> Inventory: Inventory initialized
+  deactivate DB
+  
+  Inventory --> UserData: Default inventory created
+  deactivate Inventory
+  
+  UserData --> Auth: New user initialized
+  
+else Existing User
+  DB --> UserData: User data
+  deactivate DB
+  
+  UserData -> DB: Update users/{uid}/lastLogin
+  activate DB
+  DB --> UserData: Updated
+  deactivate DB
+  
+  UserData --> Auth: Existing user data loaded
+end
+
+== Load User Data ==
+Auth -> UserData: LoadUserProfile(uid)
+UserData -> DB: Query users/{uid}
+activate DB
+DB --> UserData: User profile
+deactivate DB
+
+UserData -> UserData: CacheUserData()
+
+Auth -> Inventory: LoadUserInventory(uid)
+activate Inventory
+
+Inventory -> DB: Query inventory/{uid}
+activate DB
+DB --> Inventory: Inventory data
+deactivate DB
+
+Inventory -> Inventory: CacheInventory()
+Inventory --> Auth: Inventory loaded
+deactivate Inventory
+
+Auth -> UserData: LoadLevelProgress(uid)
+UserData -> DB: Query levelProgress/{uid}
+activate DB
+DB --> UserData: Progress data
+deactivate DB
+
+UserData -> UserData: CacheLevelProgress()
+UserData --> Auth: All data loaded
+deactivate UserData
+
+== Complete Sign In ==
+Auth -> Auth: FireOnSignInSuccess(userInfo)
+
+note right of Auth
+  Event fired:
+  - OnSignInSuccess
+  - Includes: uid, email, token
+end note
+
+Auth --> UI: Sign in successful
+deactivate Auth
+
+UI -> UI: NavigateToMainMenu()
+UI --> Player: Welcome! Show Main Menu
+deactivate UI
+
+note over Player
+  Player is now authenticated
+  and can access all features:
+  - Play levels
+  - Manage inventory
+  - View progress
+end note
+
+@enduml
+
